@@ -145,10 +145,10 @@ class QPController(Controller):
     def _build(aff_dynamics, K, Q, R, method):
         """Helper function for build_care and build_ctle"""
 
-        if method is 'CARE':
+        if method == 'CARE':
             m = len(R)
             lyap = AffineQuadCLF.build_care(aff_dynamics, Q, R)
-        elif method is 'CTLE':
+        elif method == 'CTLE':
             m = len(K)
             R = identity(m)
             lyap = AffineQuadCLF.build_ctle(affine_dynamics, K, Q)
