@@ -1,0 +1,2 @@
+from .trajectory_optimizer import TrajectoryOptimizer
+from .gp_trajectory_optimizer import GPTrajectoryOptimizer

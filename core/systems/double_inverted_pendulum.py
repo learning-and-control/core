@@ -1,13 +1,16 @@
 from matplotlib.pyplot import figure
-from numpy import array, cos, identity, sin
-
+from numpy import array
+import numpy as np
+from torch import cos, eye, float64, sin, stack, tensor
+from torch.nn import Module, Parameter
 from core.dynamics import FullyActuatedRoboticDynamics
 from core.util import default_fig
 
-class DoubleInvertedPendulum(FullyActuatedRoboticDynamics):
+class DoubleInvertedPendulum(FullyActuatedRoboticDynamics, Module):
     def __init__(self, m_1, m_2, l_1, l_2, g=9.81):
         FullyActuatedRoboticDynamics.__init__(self, 2, 2)
-        self.params = m_1, m_2, l_1, l_2, g
+        Module.__init__(self)
+        self.params = Parameter(tensor([m_1, m_2, l_1, l_2, g], dtype=float64))
 
     def D(self, q):
         m_1, m_2, l_1, l_2, _ = self.params
@@ -16,20 +19,22 @@ class DoubleInvertedPendulum(FullyActuatedRoboticDynamics):
         D_12 = m_2 * l_1 * l_2 * cos(theta_2) + m_2 * (l_2 ** 2)
         D_21 = D_12
         D_22 = m_2 * (l_2 ** 2)
-        return array([[D_11, D_12], [D_21, D_22]])
+        return stack((stack([D_11, D_12]),
+                      stack([D_21, D_22])))
 
     def C(self, q, q_dot):
         _, m_2, l_1, l_2, _ = self.params
         _, theta_2 = q
         theta_1_dot, theta_2_dot = q_dot
-        C_11 = 0
+        C_11 = tensor(0, dtype=float64)
         C_12 = -m_2 * l_1 * l_2 * (2 * theta_1_dot + theta_2_dot) * sin(theta_2)
         C_21 = -C_12 / 2
         C_22 = -m_2 * l_1 * l_2 * theta_1_dot * sin(theta_2) / 2
-        return array([[C_11, C_12], [C_21, C_22]])
+        return stack((stack([C_11, C_12]),
+                      stack([C_21, C_22])))
 
     def B(self, q):
-        return identity(2)
+        return eye(2, dtype=float64)
 
     def U(self, q):
         m_1, m_2, l_1, l_2, g = self.params
@@ -41,7 +46,7 @@ class DoubleInvertedPendulum(FullyActuatedRoboticDynamics):
         theta_1, theta_2 = q
         G_1 = -(m_1 + m_2) * g * l_1 * sin(theta_1) - m_2 * g * l_2 * sin(theta_1 + theta_2)
         G_2 = -m_2 * g * l_2 * sin(theta_1 + theta_2)
-        return array([G_1, G_2])
+        return stack([G_1, G_2])
 
     def plot_coordinates(self, ts, qs, fig=None, ax=None, labels=None):
         fig, ax = default_fig(fig, ax)
@@ -92,10 +97,12 @@ class DoubleInvertedPendulum(FullyActuatedRoboticDynamics):
     def plot_physical(self, ts, xs, fig=None, ax=None, skip=1):
         fig, ax = default_fig(fig, ax)
 
-        _, _, l_1, l_2, _ = self.params
+        _, _, l_1, l_2, _ = self.params.detach().numpy()
         theta_1s, theta_2s = xs[:, :2].T
-        r_1s = l_1 * array([sin(theta_1s), cos(theta_1s)])
-        r_2s = r_1s + l_2 * array([sin(theta_1s + theta_2s), cos(theta_1s + theta_2s)])
+        r_1s = l_1 * array([np.sin(theta_1s),
+                            np.cos(theta_1s)])
+        r_2s = r_1s + l_2 * array([np.sin(theta_1s + theta_2s),
+                                   np.cos(theta_1s +theta_2s)])
         zs = 0 * theta_1s[::skip]
 
         ax.set_title('Physical space', fontsize=16)

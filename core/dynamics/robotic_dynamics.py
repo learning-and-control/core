@@ -1,10 +1,10 @@
 from matplotlib.pyplot import figure
-from numpy import array, concatenate, dot, reshape, zeros
-from numpy.linalg import solve
+from torch import cat, matmul, solve, zeros
 
 from .affine_dynamics import AffineDynamics
 from .pd_dynamics import PDDynamics
 from .system_dynamics import SystemDynamics
+
 
 class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
     """Abstract class for unconstrained Euler-Lagrange systems.
@@ -112,8 +112,7 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
         Outputs:
         Kinetic energy: float
         """
-
-        return dot(q_dot, self.D(q), q_dot) / 2
+        return matmul(q_dot, matmul(self.D(q), q_dot))
 
     def H(self, q, q_dot):
         """Compute Coriolis and potential terms.
@@ -126,21 +125,24 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
         Coriolis and potential terms: numpy array
         """
 
-        return dot(self.C(q, q_dot), q_dot) + self.G(q) -  self.F_ext(q, q_dot)
+        return matmul(self.C(q, q_dot), q_dot) + self.G(q) - self.F_ext(q, q_dot)
 
-    def drift(self, x, t):
-        q, q_dot = reshape(x, (2, -1))
-        return concatenate([q_dot, -solve(self.D(q), self.H(q, q_dot))])
+    def drift_impl(self, x, t):
+        q, q_dot = x.view(2, -1)
+        soln = solve(self.H(q, q_dot).unsqueeze(1), self.D(q)).solution
+        soln = soln.squeeze(1)
+        return cat([q_dot, -soln])
 
-    def act(self, x, t):
+    def act_impl(self, x, t):
         q = self.proportional(x, t)
-        return concatenate([zeros((self.k, self.m)), solve(self.D(q), self.B(q))])
+        soln = solve(self.B(q), self.D(q)).solution
+        return cat([zeros((self.k, self.m), dtype=soln.dtype), soln])
 
     def proportional(self, x, t):
-        return self.eval(x, t)[:self.k]
+        return x[:self.k]
 
     def derivative(self, x, t):
-        return self.eval(x, t)[self.k:]
+        return x[self.k:]
 
     def plot_coordinates(self, ts, qs, fig=None, ax=None, labels=None):
         if labels is None:
@@ -148,16 +150,19 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
 
         return self.plot_timeseries(ts, qs, fig, ax, 'Coordinates', labels)
 
-    def plot(self, xs, us, ts, fig=None, coordinate_labels=None, action_labels=None):
+    def plot(self, xs, us, ts, fig=None, coordinate_labels=None,
+             action_labels=None):
         if fig is None:
             fig = figure(figsize=(12, 6), tight_layout=True)
 
         qs = xs[:, :self.k]
 
         coordinate_ax = fig.add_subplot(1, 2, 1)
-        fig, coordinate_ax = self.plot_coordinates(ts, qs, fig, coordinate_ax, coordinate_labels)
+        fig, coordinate_ax = self.plot_coordinates(ts, qs, fig, coordinate_ax,
+                                                   coordinate_labels)
 
         action_ax = fig.add_subplot(1, 2, 2)
-        fig, action_ax = self.plot_actions(ts, us, fig, action_ax, action_labels)
+        fig, action_ax = self.plot_actions(ts, us, fig, action_ax,
+                                           action_labels)
 
         return fig, (coordinate_ax, action_ax)

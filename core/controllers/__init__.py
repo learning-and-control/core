@@ -7,3 +7,5 @@ from .lqr_controller import LQRController
 from .pd_controller import PDController
 from .qp_controller import QPController
 from .random_controller import RandomController
+from .piecewise_constant_controller import PiecewiseConstantController
+from .mpc_controller import MPCController

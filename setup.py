@@ -9,5 +9,8 @@ setup(
         'matplotlib',
         'cvxpy',
         'keras'
-    ]
+    ],
+    extra_require={
+        'dev': ['pytest']
+    }
 )
