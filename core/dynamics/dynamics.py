@@ -53,8 +53,8 @@ class Dynamics:
         if ndims == 1:
             unsqueezed = True
             assert x.ndim == u.ndim
-            x.unsqueeze(0)
-            u.unsqueeze(0)
+            x = x.unsqueeze(0)
+            u = u.unsqueeze(0)
         expAs = list()
         expBs = list()
         for i in range(x.shape[0]):
@@ -64,6 +64,6 @@ class Dynamics:
             expAs.append(expA)
             expBs.append(expB)
         if unsqueezed:
-            return stack(expAs, dim=0).squeeze(), stack(expBs, dim=0).squeeze()
+            return stack(expAs, dim=0)[0], stack(expBs, dim=0)[0]
         else:
             return stack(expAs, dim=0), stack(expBs, dim=0)

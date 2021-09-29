@@ -3,7 +3,6 @@ from numpy.core._multiarray_umath import log
 from torch import nn
 from pathlib import Path
 from typing import List
-from gpytorch.constraints import GreaterThan
 
 #TODO: GP is coupled to RBF kernel through training method. Refactor later.
 

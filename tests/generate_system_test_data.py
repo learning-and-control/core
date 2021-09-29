@@ -22,7 +22,7 @@ def main():
 
     # Define most systems
 
-    systems = [InvertedPendulum(m=m, l=l),
+    systems = [InvertedPendulum(mass=m, l=l),
                CartPole(m_c=m * 0.5, m_p=m * .25, l=l * 0.5),
                DoubleInvertedPendulum(m_1=m, m_2=m * 2, l_1=l, l_2=l * 2)]
 

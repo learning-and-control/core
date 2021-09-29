@@ -4,12 +4,15 @@ from core.learning.gaussian_process import RBFKernel, GaussianProcess, \
     GPScaler, ScaledGaussianProcess, PeriodicKernel, AdditiveKernel, \
     AffineDotProductKernel, MultiplicativeKernel, save_gp, load_gp
 import matplotlib.pyplot as plt
-import gpytorch as gpt
 import torch as th
 import pathlib
 from os import makedirs
 
 th.manual_seed(0)
+def confidence_region(mean, cov_matrix):
+    variance = cov_matrix.diag()
+    std = variance.sqrt()
+    return mean - 2*std, mean + 2*std
 
 def test_1dx1dgp():
     sigma = 0.2
@@ -25,8 +28,7 @@ def test_1dx1dgp():
 
     y_hat, cov = gp(test_x)
 
-    out_dist = gpt.distributions.MultivariateNormal(y_hat.squeeze(), cov.to_dense().squeeze())
-    lower, upper = out_dist.confidence_region()
+    lower, upper = confidence_region(y_hat.squeeze(), cov.to_dense().squeeze())
     assert (y_hat - test_y).abs().mean().item() < 1e-1
     assert (test_y.squeeze() > lower).all()
     assert (upper > test_y.squeeze()).all()
@@ -62,8 +64,8 @@ def test_2dx1dgp():
     x_vec, y_vec = th.flatten(X), th.flatten(Y)
     test_x = th.stack((x_vec, y_vec), dim=1)
     y_hat, cov = gp(test_x)
-    out_dist = gpt.distributions.MultivariateNormal(y_hat.squeeze(), cov.to_dense().squeeze())
-    lower, upper = out_dist.confidence_region()
+
+    lower, upper =  confidence_region(y_hat.squeeze(), cov.to_dense().squeeze())
     test_y =  (th.sin(test_x[:,0])*th.cos(test_x[:,1])).unsqueeze(1)
 
     assert (y_hat - test_y).abs().max().item() < sigma
@@ -100,8 +102,7 @@ def test_gp_save_load():
     x_vec, y_vec = th.flatten(X), th.flatten(Y)
     test_x = th.stack((x_vec, y_vec), dim=1)
     y_hat, cov = gp_loaded(test_x)
-    out_dist = gpt.distributions.MultivariateNormal(y_hat.squeeze(), cov.to_dense().squeeze())
-    lower, upper = out_dist.confidence_region()
+    lower, upper = confidence_region(y_hat.squeeze(), cov.to_dense().squeeze())
     test_y =  (th.sin(test_x[:,0])*th.cos(test_x[:,1])).unsqueeze(1)
 
     assert (y_hat - test_y).abs().max().item() < sigma
@@ -145,16 +146,11 @@ def test_2d2dgp_multiplicative_periodic():
     test_y , test_y_prime = genYYprime(test_x)
     y_hat, cov = gp(test_x)
     y_hat_prime, cov_prime = gp.ddx(test_x)
-    out_dist_1 = gpt.distributions.MultivariateNormal(y_hat.squeeze()[:, 0],
-                                                      cov[:, :, 0, 0])
-    out_dist_2 = gpt.distributions.MultivariateNormal(y_hat.squeeze()[:, 1],
-                                                      cov[:, :, 1, 1])
-    lower1, upper1 = out_dist_1.confidence_region()
-    lower2, upper2 = out_dist_2.confidence_region()
-    lower1_p, upper1_p = gpt.distributions.MultivariateNormal(
-        y_hat_prime[:, 0, 0], cov_prime[:, :, 0, 0, 0, 0]).confidence_region()
-    lower2_p, upper2_p = gpt.distributions.MultivariateNormal(
-        y_hat_prime[:, 1, 1], cov_prime[:, :, 1, 1, 1, 1]).confidence_region()
+
+    lower1, upper1 = confidence_region(y_hat.squeeze()[:, 0], cov[:, :, 0, 0])
+    lower2, upper2 =confidence_region(y_hat.squeeze()[:, 1], cov[:, :, 1, 1])
+    lower1_p, upper1_p = confidence_region(y_hat_prime[:, 0, 0], cov_prime[:, :, 0, 0, 0, 0])
+    lower2_p, upper2_p = confidence_region(y_hat_prime[:, 1, 1], cov_prime[:, :, 1, 1, 1, 1])
 
     # these dont' guarantee true value is in confidence region but its good
     # enough
@@ -280,22 +276,13 @@ def test_2d2dgp_scaling_wrapping():
 
     y_hat, cov = gp(test_x)
     y_hat_prime, cov_prime = gp.ddx(test_x)
-    out_dist_1 = gpt.distributions.MultivariateNormal(y_hat.squeeze()[:,0],
-                                                      cov[:,:,0,0])
-    out_dist_2 = gpt.distributions.MultivariateNormal(y_hat.squeeze()[:, 1],
-                                                      cov[:,:,1,1])
-    out_dist_3 = gpt.distributions.MultivariateNormal(y_hat.squeeze()[:, 2],
-                                                      cov[:,:,2,2])
 
-    lower1, upper1 = out_dist_1.confidence_region()
-    lower2, upper2 = out_dist_2.confidence_region()
-    lower3, upper3 = out_dist_3.confidence_region()
-    lower1_p , upper1_p = gpt.distributions.MultivariateNormal(
-        y_hat_prime[:,0,0], cov_prime[:,:,0,0,0,0]).confidence_region()
-    lower2_p , upper2_p = gpt.distributions.MultivariateNormal(
-        y_hat_prime[:,1,1], cov_prime[:,:,1,1,1,1]).confidence_region()
-    lower3_p, upper3_p = gpt.distributions.MultivariateNormal(
-        y_hat_prime[:, 2, 1], cov_prime[:, :, 1, 1, 2,2]).confidence_region()
+    lower1, upper1 = confidence_region(y_hat.squeeze()[:,0], cov[:,:,0,0])
+    lower2, upper2 = confidence_region(y_hat.squeeze()[:, 1], cov[:,:,1,1])
+    lower3, upper3 = confidence_region(y_hat.squeeze()[:, 2], cov[:,:,2,2])
+    lower1_p , upper1_p = confidence_region(y_hat_prime[:,0,0], cov_prime[:,:,0,0,0,0])
+    lower2_p , upper2_p = confidence_region(y_hat_prime[:,1,1], cov_prime[:,:,1,1,1,1])
+    lower3_p, upper3_p = confidence_region(y_hat_prime[:, 2, 1], cov_prime[:, :, 1, 1, 2,2])
     # these dont' guarantee true value is in confidence region but its good
     # enough
     # GP tests
@@ -444,16 +431,10 @@ def test_2d2dgp_scaling():
 
     y_hat, cov = gp(test_x)
     y_hat_prime, cov_prime = gp.ddx(test_x)
-    out_dist_1 = gpt.distributions.MultivariateNormal(y_hat.squeeze()[:,0],
-                                                      cov[:,:,0,0])
-    out_dist_2 = gpt.distributions.MultivariateNormal(y_hat.squeeze()[:, 1],
-                                                      cov[:,:,1,1])
-    lower1, upper1 = out_dist_1.confidence_region()
-    lower2, upper2 = out_dist_2.confidence_region()
-    lower1_p , upper1_p = gpt.distributions.MultivariateNormal(
-        y_hat_prime[:,0,0], cov_prime[:,:,0,0, 0,0]).confidence_region()
-    lower2_p , upper2_p = gpt.distributions.MultivariateNormal(
-        y_hat_prime[:,1,1], cov_prime[:,:,1,1, 1, 1]).confidence_region()
+    lower1, upper1 = confidence_region(y_hat.squeeze()[:,0], cov[:,:,0,0])
+    lower2, upper2 = confidence_region(y_hat.squeeze()[:, 1], cov[:,:,1,1])
+    lower1_p , upper1_p = confidence_region(y_hat_prime[:,0,0], cov_prime[:,:,0,0, 0,0])
+    lower2_p , upper2_p = confidence_region(y_hat_prime[:,1,1], cov_prime[:,:,1,1, 1, 1])
 
     # these dont' guarantee true value is in confidence region but its good
     # enough
@@ -567,16 +548,10 @@ def test_2d2dgp():
     cov = cov.to_dense()
     y_hat_prime, cov_prime = gp.ddx(test_x)
     cov_prime = cov_prime.to_dense()
-    out_dist_1 = gpt.distributions.MultivariateNormal(y_hat.squeeze()[:,0],
-                                                      cov[:,:,0, 0])
-    out_dist_2 = gpt.distributions.MultivariateNormal(y_hat.squeeze()[:, 1],
-                                                      cov[:,:,1, 1])
-    lower1, upper1 = out_dist_1.confidence_region()
-    lower2, upper2 = out_dist_2.confidence_region()
-    lower1_p , upper1_p = gpt.distributions.MultivariateNormal(
-        y_hat_prime[:,0,0], cov_prime[:,:,0,0, 0, 0]).confidence_region()
-    lower2_p , upper2_p = gpt.distributions.MultivariateNormal(
-        y_hat_prime[:,1,1], cov_prime[:,:,1,1, 1, 1]).confidence_region()
+    lower1, upper1 = confidence_region(y_hat.squeeze()[:,0], cov[:,:,0, 0])
+    lower2, upper2 = confidence_region(y_hat.squeeze()[:, 1], cov[:,:,1, 1])
+    lower1_p , upper1_p = confidence_region(y_hat_prime[:,0,0], cov_prime[:,:,0,0, 0, 0])
+    lower2_p , upper2_p = confidence_region(y_hat_prime[:,1,1], cov_prime[:,:,1,1, 1, 1])
 
     # these dont' guarantee true value is in confidence region but its good
     # enough

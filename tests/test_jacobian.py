@@ -55,7 +55,7 @@ def analytic_pendulum_jacobian(x, u, t):
                          [
                              (CartPole(m_c=m_c, m_p=m_p, l=l_c, g=g),
                               analytic_cartpole_jacobian),
-                             (InvertedPendulum(m=m, l=l, g=g),
+                             (InvertedPendulum(mass=m, l=l, g=g),
                               analytic_pendulum_jacobian)
                          ])
 def test_system_jacboian(system, analytic_jacobian):
@@ -84,6 +84,10 @@ def test_system_jacboian(system, analytic_jacobian):
 
         assert len(th_jacobian) == len(np_jacobian) == 2
 
+        true_jacobian.shape
+        np_exp_jacobian[0].shape
+        np_exp_jacobian[1].shape
+        np.concatenate(np_exp_jacobian, axis=1).shape
         np.testing.assert_array_almost_equal(true_exp_jacobian,
                                              np.concatenate(np_exp_jacobian,axis=1))
         np.testing.assert_array_almost_equal(true_jacobian,

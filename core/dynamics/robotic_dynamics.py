@@ -1,6 +1,6 @@
 from matplotlib.pyplot import figure
-from torch import cat, matmul, solve, zeros
-
+from torch import cat, matmul, zeros
+from torch.linalg import lstsq
 from .affine_dynamics import AffineDynamics
 from .pd_dynamics import PDDynamics
 from .system_dynamics import SystemDynamics
@@ -129,13 +129,13 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
 
     def drift_impl(self, x, t):
         q, q_dot = x.view(2, -1)
-        soln = solve(self.H(q, q_dot).unsqueeze(1), self.D(q)).solution
+        soln = lstsq(self.H(q, q_dot).unsqueeze(1), self.D(q)).solution
         soln = soln.squeeze(1)
         return cat([q_dot, -soln])
 
     def act_impl(self, x, t):
         q = self.proportional(x, t)
-        soln = solve(self.B(q), self.D(q)).solution
+        soln = lstsq(self.B(q), self.D(q)).solution
         return cat([zeros((self.k, self.m), dtype=soln.dtype), soln])
 
     def proportional(self, x, t):
