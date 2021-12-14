@@ -1,5 +1,5 @@
 from cvxpy import Minimize, Problem, quad_form, square, sum_squares, Variable
-from numpy import zeros
+from numpy import zeros, identity
 from numpy.linalg import eigvals
 
 from .controller import Controller
@@ -113,7 +113,7 @@ class QPController(Controller):
         else:
             constraint = lambda x, t: aff_safety.drift(x, t) + aff_safety.act(x, t) * self.u >= -comp(aff_safety.eval(x, t))
         self.constraints.append(constraint)
-
+    @staticmethod
     def build_care(aff_dynamics, Q, R):
         """Build minimum-norm controller with stability constraint from solving CARE
 
@@ -128,6 +128,7 @@ class QPController(Controller):
 
         return QPController._build(aff_dynamics, None, Q, R, 'CARE')
 
+    @staticmethod
     def build_ctle(aff_dynamics, K, Q):
         """Build minimum-norm controller with stability constraint from solving CTLE
 
@@ -142,16 +143,17 @@ class QPController(Controller):
 
         return QPController._build(aff_dynamics, K, Q, None, 'CTLE')
 
+    @staticmethod
     def _build(aff_dynamics, K, Q, R, method):
         """Helper function for build_care and build_ctle"""
 
-        if method is 'CARE':
+        if method == 'CARE':
             m = len(R)
             lyap = AffineQuadCLF.build_care(aff_dynamics, Q, R)
-        elif method is 'CTLE':
+        elif method == 'CTLE':
             m = len(K)
             R = identity(m)
-            lyap = AffineQuadCLF.build_ctle(affine_dynamics, K, Q)
+            lyap = AffineQuadCLF.build_ctle(aff_dynamics, K, Q)
         qp = QPController(aff_dynamics, m)
         qp.add_static_cost(R)
         alpha = min(eigvals(Q)) / max(eigvals(lyap.P))

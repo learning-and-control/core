@@ -9,7 +9,6 @@ from .learned_affine_dynamics import LearnedAffineDynamics
 from .learned_dynamics import LearnedDynamics
 from .learned_fb_lin_dynamics import LearnedFBLinDynamics
 from .learned_scalar_affine_dynamics import LearnedScalarAffineDynamics
-from .linear_system_dynamics import LinearSystemDynamics
 from .linearizable_dynamics import LinearizableDynamics
 from .pd_dynamics import PDDynamics
 from .quadratic_clf import QuadraticCLF
