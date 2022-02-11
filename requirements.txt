@@ -69,6 +69,7 @@ tensorflow-estimator
 termcolor
 terminado
 testpath
+torchdiffeq
 tornado
 traitlets
 wcwidth
