@@ -14,21 +14,21 @@ class InvertedPendulum(FullyActuatedRoboticDynamics, Module):
         self.params = Parameter(tensor([mass, l, g], dtype=float64))
 
     def D(self, q):
-        return (self.mass * (self.l ** 2)).unsqueeze(0).unsqueeze(0)
+        return (self.mass * (self.l ** 2))[None, None, None].expand(q.shape[0], -1, -1)
 
     def C(self, q, q_dot):
-        return tensor([[0.0]], dtype=float64)
+        return tensor([[[0.0]]], dtype=float64).expand(q.shape[0], -1, -1)
 
     def U(self, q):
-        theta, = q
+        theta = q[:, 0, None]
         return self.mass * self.g * self.l * cos(theta)
 
     def G(self, q):
-        theta, = q
-        return (-self.mass * self.g * self.l * sin(theta)).unsqueeze(0)
+        theta = q[:, 0, None]
+        return -self.mass * self.g * self.l * sin(theta)
 
     def B(self, q):
-        return tensor([[1]], dtype=float64)
+        return tensor([[[1]]], dtype=float64).expand(q.shape[0], -1, -1)
     
     @property
     def l(self):

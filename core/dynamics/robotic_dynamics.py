@@ -100,7 +100,7 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
         Generalized forces: numpy array
         """
 
-        return zeros(self.k)
+        return zeros(q.shape[0], self.k)
 
     def T(self, q, q_dot):
         """Compute kinetic energy.
@@ -124,25 +124,33 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
         Outputs:
         Coriolis and potential terms: numpy array
         """
+        C_ = self.C(q, q_dot)
+        Cq_dot_ = matmul(C_, q_dot[:, :, None])[:, :, 0]
+        G_ = self.G(q)
+        F_ext_ = self.F_ext(q, q_dot)
 
-        return matmul(self.C(q, q_dot), q_dot) + self.G(q) - self.F_ext(q, q_dot)
+        return Cq_dot_ + G_ - F_ext_
 
     def drift_impl(self, x, t):
-        q, q_dot = x.view(2, -1)
-        soln = lstsq(self.H(q, q_dot).unsqueeze(1), self.D(q)).solution
-        soln = soln.squeeze(1)
-        return cat([q_dot, -soln])
+        q, q_dot = self.proportional(x, t), self.derivative(x, t)
+        H_ = self.H(q, q_dot).unsqueeze(1)
+        D_ = self.D(q)
+        soln = lstsq(D_, H_).solution[:, :, 0]
+        return cat([q_dot, -soln], dim=-1)
 
     def act_impl(self, x, t):
         q = self.proportional(x, t)
-        soln = lstsq(self.B(q), self.D(q)).solution
-        return cat([zeros((self.k, self.m), dtype=soln.dtype), soln])
+        B_ = self.B(q)
+        D_ = self.D(q)
+        soln = lstsq(D_, B_).solution
+        return cat([zeros((x.shape[0], self.k, self.m), dtype=soln.dtype),
+                    soln], dim=1)
 
     def proportional(self, x, t):
-        return x[:self.k]
+        return x[:, :self.k]
 
     def derivative(self, x, t):
-        return x[self.k:]
+        return x[:, self.k:]
 
     def plot_coordinates(self, ts, qs, fig=None, ax=None, labels=None):
         if labels is None:
