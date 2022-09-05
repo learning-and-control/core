@@ -5,7 +5,7 @@ from .dynamics import Dynamics
 class LinearizableDynamics(Dynamics):
     """Abstract class for dynamics with representations as x_dot = A * x + B * u.
 
-    Override eval, eval_dot, linear_system.
+    Override image, forward, linear_system.
     """
 
     def linear_system(self):

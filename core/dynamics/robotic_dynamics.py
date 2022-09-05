@@ -26,6 +26,8 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
         """
 
         SystemDynamics.__init__(self, 2 * n, m)
+        AffineDynamics.__init__(self)
+        PDDynamics.__init__(self)
         self.k = n
 
     def D(self, q):
@@ -131,14 +133,14 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
 
         return Cq_dot_ + G_ - F_ext_
 
-    def drift_impl(self, x, t):
+    def drift(self, x, t):
         q, q_dot = self.proportional(x, t), self.derivative(x, t)
         H_ = self.H(q, q_dot).unsqueeze(1)
         D_ = self.D(q)
         soln = lstsq(D_, H_).solution[:, :, 0]
         return cat([q_dot, -soln], dim=-1)
 
-    def act_impl(self, x, t):
+    def act(self, x, t):
         q = self.proportional(x, t)
         B_ = self.B(q)
         D_ = self.D(q)

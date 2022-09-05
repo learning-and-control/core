@@ -14,8 +14,8 @@ class LearnedAffineDynamics(AffineDynamics):
     def process_act(self, x, t):
         return concatenate([x, array([t])])
 
-    def eval(self, x, t):
-        return self.dynamics.eval(x, t)
+    def image(self, x, t):
+        return self.dynamics.image(x, t)
 
     def drift(self, x, t):
         return self.dynamics.drift(x, t) + self.res_model.eval_drift(self.process_drift(x, t))
@@ -31,10 +31,10 @@ class LearnedAffineDynamics(AffineDynamics):
         drift_inputs = array([self.process_drift(x, t) for x, t in zip(xs, ts)])
         act_inputs = array([self.process_act(x, t) for x, t in zip(xs, ts)])
 
-        reps = array([self.dynamics.eval(x, t) for x, t in zip(xs, ts)])
+        reps = array([self.dynamics.image(x, t) for x, t in zip(xs, ts)])
         rep_dots = differentiate(reps, ts)
 
-        rep_dot_noms = array([self.dynamics.eval_dot(x, u, t) for x, u, t in zip(xs, us, ts)])
+        rep_dot_noms = array([self.dynamics(x, u, t) for x, u, t in zip(xs, us, ts)])
 
         drift_inputs = drift_inputs[half_window:-half_window]
         act_inputs = act_inputs[half_window:-half_window]

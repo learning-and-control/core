@@ -11,11 +11,11 @@ class LearnedDynamics(Dynamics):
     def process(self, x, u, t):
         return concatenate([x, u, array([t])])
 
-    def eval(self, x, t):
-        return self.dynamics.eval(x, t)
+    def image(self, x, t):
+        return self.dynamics.image(x, t)
 
-    def eval_dot(self, x, u, t):
-        return self.dynamics.eval_dot(x, u, t) + self.res_model.eval_dot(self.process(x, u, t))
+    def forward(self, x, u, t):
+        return self.dynamics(x, u, t) + self.res_model(self.process(x, u, t))
 
     def process_episode(self, xs, us, ts, window=3):
         half_window = (window - 1) // 2
@@ -24,10 +24,10 @@ class LearnedDynamics(Dynamics):
 
         inputs = array([self.process(x, u, t) for x, u, t in zip(xs, us, ts)])
 
-        reps = array([self.dynamics.eval(x, t) for x, t in zip(xs, ts)])
+        reps = array([self.dynamics.image(x, t) for x, t in zip(xs, ts)])
         rep_dots = differentiate(reps, ts)
 
-        rep_dot_noms = array([self.dynamics.eval_dot(x, u, t) for x, u, t in zip(xs, us, ts)])
+        rep_dot_noms = array([self.dynamics(x, u, t) for x, u, t in zip(xs, us, ts)])
 
         inputs = inputs[half_window:-half_window]
         rep_dot_noms = rep_dot_noms[half_window:-half_window]

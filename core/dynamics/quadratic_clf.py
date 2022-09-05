@@ -16,7 +16,7 @@ class QuadraticCLF(ScalarDynamics):
         self.dynamics = dynamics
         self.P = P
 
-    def eval(self, x, t):
+    def image(self, x, t):
         """Compute V(z).
 
         Inputs:
@@ -27,14 +27,14 @@ class QuadraticCLF(ScalarDynamics):
         Lyapunov function value: float
         """
 
-        z = self.dynamics.eval(x, t)
+        z = self.dynamics.image(x, t)
         return dot(z, dot(self.P, z))
 
     def eval_grad(self, x, t):
-        z = self.dynamics.eval(x, t)
+        z = self.dynamics.image(x, t)
         return 2 * dot(self.P, z)
 
-    def eval_dot(self, x, u, t):
+    def forward(self, x, u, t):
         """Compute dV/dt.
 
         Inputs:
@@ -46,5 +46,5 @@ class QuadraticCLF(ScalarDynamics):
         Lyapunov function time derivative: float
         """
 
-        return dot(self.eval_grad(x, t), self.dynamics.eval_dot(x, u, t))
+        return dot(self.eval_grad(x, t), self.dynamics(x, u, t))
 

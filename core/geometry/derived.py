@@ -51,8 +51,8 @@ class Derived(ConvexBody):
             self.derived = derived
             self.dynamics = affine_dynamics
 
-        def eval(self, x, t):
-            return self.derived.to_primitive(self.dynamics.eval(x, t))
+        def image(self, x, t):
+            return self.derived.to_primitive(self.dynamics.image(x, t))
 
         def drift(self, x, t):
             return dot(self.derived.T, self.dynamics.drift(x, t))

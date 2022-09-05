@@ -8,6 +8,7 @@ class ConfigurationDynamics(FBLinDynamics, PDDynamics):
         relative_degrees = [2] * k
         perm = concatenate([array([j, j + k]) for j in range(k)])
         FBLinDynamics.__init__(self, relative_degrees, perm)
+        PDDynamics.__init__(self)
         self.robotic_dynamics = robotic_dynamics
         self.k = k
 
@@ -29,7 +30,7 @@ class ConfigurationDynamics(FBLinDynamics, PDDynamics):
     def y_d_ddot(self, t):
         return zeros(self.k)
 
-    def eval(self, x, t):
+    def image(self, x, t):
         return concatenate([self.proportional(x, t), self.derivative(x, t)])
 
     def drift(self, x, t):

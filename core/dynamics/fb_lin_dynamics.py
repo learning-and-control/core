@@ -15,7 +15,7 @@ class FBLinDynamics(AffineDynamics, LinearizableDynamics):
     If dynamics are specified in a different order, specify a permutation into
     block form.
 
-    Override eval, drift, act.
+    Override image, drift, act.
     """
 
     def __init__(self, relative_degrees, perm=None):

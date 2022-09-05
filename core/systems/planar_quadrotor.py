@@ -93,7 +93,7 @@ class PlanarQuadrotor(RoboticDynamics, Module):
             z_ddddot_act = tensor([cos(theta), -f * sin(theta) / J]) / m
             return cat([x_ddddot_act, z_ddddot_act])
 
-        def eval(self, x, t):
+        def image(self, x, t):
             q, q_dot = x[:6].view((2, 3))
             f, f_dot = x[-2:]
             r, theta = q[:2], q[-1]
@@ -103,7 +103,7 @@ class PlanarQuadrotor(RoboticDynamics, Module):
             return cat([r, r_dot, r_ddot, r_dddot])
 
         def drift(self, x, t):
-            eta = self.eval(x, t)
+            eta = self.image(x, t)
             theta, theta_dot, f, f_dot = x[tensor([2, 5, -2, -1])]
             r_ddddot_drift = self.r_ddddot_drift(f, f_dot, theta, theta_dot)
             return cat([eta[2:], r_ddddot_drift])

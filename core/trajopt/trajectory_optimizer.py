@@ -53,9 +53,9 @@ class TrajectoryOptimizer:
             (Atp1, Btp1) = self.dyn.jacobian(xt[t + 1].value, ut[t + 1].value,
                                              taup1)
             ft = At @ (xt[t]- xt[t].value) + Bt @ (ut[t] - ut[t].value) + \
-                self.dyn.eval_dot(xt[t].value, ut[t].value, tau)
+                self.dyn(xt[t].value, ut[t].value, tau)
             ftp1 = Atp1 @ (xt[t + 1] - xt[t+1].value) + Btp1 @ (ut[t + 1] - ut[t+1].value) \
-                   + self.dyn.eval_dot(xt[t+1].value, ut[t+1].value, tau)
+                   + self.dyn(xt[t+1].value, ut[t+1].value, tau)
             dynamics_constraints += [
                 xt[t + 1] - xt[t] == 0.5 * self.h_k * (ft + ftp1)]
         return dynamics_constraints
@@ -66,7 +66,7 @@ class TrajectoryOptimizer:
             tau = t * self.h_k
             (At, Bt) = self.dyn.jacobian(xt[t].value, ut[t].value, tau)
             expAt = expm(At * self.h_k)
-            C = self.dyn.eval_dot(xt[t].value, ut[t].value, tau) \
+            C = self.dyn(xt[t].value, ut[t].value, tau) \
                 - At @xt[t].value - Bt @ ut[t].value
             Ainv = pinv(At)
             dynamics_constraints += [

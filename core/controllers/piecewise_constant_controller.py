@@ -10,7 +10,7 @@ class PiecewiseConstantController(Controller):
         self.h = h
         self.round_mode_on = round_mode
 
-    def eval(self, x, t):
+    def forward(self, x, t):
         #technically floor should be correct but floating point arithmetic
         #can make you choose the wrong slice
 

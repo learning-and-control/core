@@ -4,8 +4,6 @@ from numpy.linalg import pinv
 from scipy.linalg import logm
 
 from core.dynamics import SystemDynamics, Dynamics
-from core.util import torch_guard
-
 
 class AffineGPSystem(SystemDynamics, Dynamics):
 
@@ -36,17 +34,11 @@ class AffineGPSystem(SystemDynamics, Dynamics):
             self.ddim_to_gp_idx = ddim_to_gp_idx
             assert set(self.ddim_to_dim.keys()) == set(self.ddim_to_gp_idx.keys())
 
-    def eval_dot(self, x, u, t):
-        return torch_guard((x, u, t), self.eval_dot_impl)
-
-    def eval_dot_impl(self, x, u, t):
+    def forward(self, x, u, t):
         A, B, C = self._make_AB(x, u)
         return A @ x +  B @ u + C
 
     def jacobian_exp(self, xts, uts):
-        return torch_guard((xts, uts), self.jacobian_exp_impl)
-
-    def jacobian_exp_impl(self, xts, uts):
         As, Bs, Cs, cov, _ = self._next_step_info(xts, uts)
         Cs = Cs.squeeze()
         return As, Bs, Cs, cov
@@ -71,9 +63,6 @@ class AffineGPSystem(SystemDynamics, Dynamics):
             return super().step(x_0, u_0, t_0, t_f, atol, rtol)
 
     def vec_step(self, xts, uts):
-        return torch_guard((xts, uts), self.vec_step_impl)
-
-    def vec_step_impl(self, xts, uts):
         delta_xtp1, _ = self.gp(th.cat([xts[:, self.dyn_dims], uts], dim=1))
 
         if self.delta_mode_on:
@@ -92,9 +81,6 @@ class AffineGPSystem(SystemDynamics, Dynamics):
         return xtp1
 
     def jacobian(self, x, u, t):
-        return torch_guard((x,u,t), self.jacobian_impl)
-
-    def jacobian_impl(self, x, u, t):
         A, B, _ = self._make_AB(x, u)
         return A, B
 

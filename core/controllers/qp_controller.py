@@ -69,7 +69,7 @@ class QPController(Controller):
         Regularizer weight, coeff: float
         """
 
-        cost = lambda x, t: coeff * sum_squares(self.u - controller.process(controller.eval(x, t)))
+        cost = lambda x, t: coeff * sum_squares(self.u - controller.process(controller(x, t)))
         self.dynamic_costs.append(cost)
 
     def add_stability_constraint(self, aff_lyap, comp=None, slacked=False, coeff=0):
@@ -88,9 +88,9 @@ class QPController(Controller):
             delta = Variable()
             self.variables.append(delta)
             self.static_costs.append(coeff * square(delta))
-            constraint = lambda x, t: aff_lyap.drift(x, t) + aff_lyap.act(x, t) * self.u <= -comp(aff_lyap.eval(x, t)) + delta
+            constraint = lambda x, t: aff_lyap.drift(x, t) + aff_lyap.act(x, t) * self.u <= -comp(aff_lyap.image(x, t)) + delta
         else:
-            constraint = lambda x, t: aff_lyap.drift(x, t) + aff_lyap.act(x, t) * self.u <= -comp(aff_lyap.eval(x, t))
+            constraint = lambda x, t: aff_lyap.drift(x, t) + aff_lyap.act(x, t) * self.u <= -comp(aff_lyap.image(x, t))
         self.constraints.append(constraint)
 
     def add_safety_constraint(self, aff_safety, comp=None, slacked=False, coeff=0):
@@ -109,9 +109,9 @@ class QPController(Controller):
             delta = Variable()
             self.variables.append(delta)
             self.static_costs.append(coeff * square(delta))
-            constraint = lambda x, t: aff_safety.drift(x, t) + aff_safety.act(x, t) * self.u >= -comp(aff_safety.eval(x, t)) - delta
+            constraint = lambda x, t: aff_safety.drift(x, t) + aff_safety.act(x, t) * self.u >= -comp(aff_safety.image(x, t)) - delta
         else:
-            constraint = lambda x, t: aff_safety.drift(x, t) + aff_safety.act(x, t) * self.u >= -comp(aff_safety.eval(x, t))
+            constraint = lambda x, t: aff_safety.drift(x, t) + aff_safety.act(x, t) * self.u >= -comp(aff_safety.image(x, t))
         self.constraints.append(constraint)
     @staticmethod
     def build_care(aff_dynamics, Q, R):
@@ -161,7 +161,7 @@ class QPController(Controller):
         qp.add_stability_constraint(lyap, comp)
         return qp
 
-    def eval(self, x, t):
+    def forward(self, x, t):
         static_cost = sum(self.static_costs)
         dynamic_cost = sum([cost(x, t) for cost in self.dynamic_costs])
         obj = Minimize(static_cost + dynamic_cost)

@@ -1,7 +1,8 @@
-class Controller:
+from torch import nn
+class Controller(nn.Module):
     """Abstract policy class for control.
 
-    Override eval.
+    Override forward.
     """
 
     def __init__(self, dynamics):
@@ -10,10 +11,10 @@ class Controller:
         Inputs:
         Dynamics, dynamics: Dynamics
         """
-
+        super().__init__()
         self.dynamics = dynamics
 
-    def eval(self, x, t):
+    def forward(self, x, t):
         """Compute general representation of an action.
 
         Inputs:

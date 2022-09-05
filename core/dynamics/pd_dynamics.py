@@ -3,7 +3,7 @@ from .dynamics import Dynamics
 class PDDynamics(Dynamics):
     """Abstract class for dynamics with proportional and derivative components.
 
-    Override eval, eval_dot, proportional, derivative.
+    Override image, forward, proportional, derivative.
     """
 
     def proportional(self, x, t):

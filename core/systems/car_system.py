@@ -26,7 +26,7 @@ class Car(SystemDynamics, AffineDynamics, Module):
         self.Df = 0.8 * self.m * 9.81 / 2.0
         self.Dr = 0.8 * self.m * 9.81 / 2.0
 
-    def eval_dot_impl(self, x, u, t):
+    def forward(self, x, u, t):
         delta = u[:,0]
         a = u[:, 1]
         X = Y = psi = tensor(0.0) #assume these are for global coordinate frame

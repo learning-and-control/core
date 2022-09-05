@@ -1,4 +1,3 @@
-from numpy import dot
 
 from .controller import Controller
 
@@ -16,7 +15,7 @@ class LinearController(Controller):
         """
 
         Controller.__init__(self, affine_dynamics)
-        self.K = K
+        self.register_buffer('K', K)
 
-    def eval(self, x, t):
-        return -dot(self.K, self.dynamics.eval(x, t))
+    def forward(self, x, t):
+        return (-self.K[None] @ self.dynamics.image(x, t)[:, :, None])[:, :, 0]

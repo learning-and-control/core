@@ -43,7 +43,7 @@ def plot_2D_dyn_sys(dyn,  ax=None,
         ax = fig.add_subplot()
     X, Y = meshgrid(linspace(low_x, high_x, n_sample),
                     linspace(low_y, high_y, n_sample))
-    arrows = array([dyn.eval_dot(stack(xy), zeros((1,)), 0) for xy in
+    arrows = array([dyn(stack(xy), zeros((1,)), 0) for xy in
                     zip(X.ravel(), Y.ravel())])
     arrows = arrows.reshape(X.shape + (2,))
     ax.streamplot(X, Y, arrows[:, :, 0], arrows[:, :, 1])

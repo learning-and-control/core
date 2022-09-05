@@ -1,14 +1,16 @@
-from ..util import torch_guard
 from torch.autograd.functional import jacobian
 from torch import eye, matrix_exp, pinverse, stack
+from torch.nn import Module
 
-class Dynamics:
+class Dynamics(Module):
     """Abstract dynamics class.
 
-    Override eval, eval_dot.
+    Override image, forward.
     """
+    def __init__(self):
+        super().__init__()
 
-    def eval(self, x, t):
+    def image(self, x, t):
         """Compute representation.
 
         Inputs:
@@ -21,7 +23,7 @@ class Dynamics:
 
         pass
 
-    def eval_dot(self, x, u, t):
+    def forward(self, x, u, t):
         """Compute dynamics (time derivative of representation).
 
         Inputs:
@@ -33,21 +35,18 @@ class Dynamics:
         Time-derivative: numpy array
         """
 
-        return torch_guard((x, u, t), self.eval_dot_impl)
-
-    def eval_dot_impl(self, x, u, t):
         pass
 
     def jacobian(self, x, u, t):
-        return torch_guard((x, u, t), self.jacobian_impl)
 
-    def jacobian_impl(self, x, u, t):
-        return jacobian(self.eval_dot, (x, u, t))[:-1]
+        F,G = jacobian(
+            lambda x_in, u_in: self(x_in, u_in, t).sum(dim=0),
+            (x, u), create_graph=True)
+        F = F.swapaxes(1,0)
+        G = G.swapaxes(1,0)
+        return F, G
 
     def jacobian_exp(self, x, u, t, delta_t):
-        return torch_guard((x, u, t, delta_t), self.jacobian_exp_impl)
-
-    def jacobian_exp_impl(self, x, u, t, delta_t):
         ndims = x.ndim
         unsqueezed = False
         if ndims == 1:
@@ -58,7 +57,7 @@ class Dynamics:
         expAs = list()
         expBs = list()
         for i in range(x.shape[0]):
-            A, B = jacobian(self.eval_dot, (x[i], u[i], t))[:-1]
+            A, B = jacobian(self, (x[i], u[i], t))[:-1]
             expA = matrix_exp(A*delta_t)
             expB = pinverse(A) @ (expA - eye(self.n)) @ B
             expAs.append(expA)

@@ -15,7 +15,7 @@ class Segway(SystemDynamics, AffineDynamics, Module):
         SystemDynamics.__init__(self, 4, 1)
         Module.__init__(self)
 
-    def eval_dot_impl(self, x, u, t):
+    def forward(self, x, u, t):
         x_dot = x[2]
         y_dot = x[3]
         y = x[1]

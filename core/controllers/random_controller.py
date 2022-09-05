@@ -35,12 +35,12 @@ class RandomController(Controller):
 
         return multivariate_normal(zeros(self.m), self.cov)
 
-    def eval(self, x, t):
+    def forward(self, x, t):
         if self.counter == 0:
             self.pert = self.sample()
             self.counter = self.reps + 1
         self.counter = self.counter - 1
-        return self.controller.eval(x, t), self.pert
+        return self.controller(x, t), self.pert
 
     def process(self, u):
         u_nom, u_pert = u

@@ -9,7 +9,7 @@ class MPCController(Controller):
         self.xt_prev = None
         self.ut_prev = None
 
-    def eval(self, x, t):
+    def forward(self, x, t):
         ws_ut = ws_xt = None
         if self.xt_prev is not None:
             ws_xt = concatenate([x[None,:], self.xt_prev[2:], self.xt_prev[None, -1]])

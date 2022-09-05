@@ -24,8 +24,8 @@ class FBLinController(Controller):
         self.select = fb_lin_dynamics.select
         self.permute = fb_lin_dynamics.permute
 
-    def eval(self, x, t):
+    def forward(self, x, t):
         drift = self.select(self.permute(self.dynamics.drift(x, t)))
         act = self.select(self.permute(self.dynamics.act(x, t)))
-        return solve(act, -drift + self.linear_controller.eval(x, t))
+        return solve(act, -drift + self.linear_controller(x, t))
 

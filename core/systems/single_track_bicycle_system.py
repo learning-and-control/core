@@ -18,7 +18,7 @@ class SingleTrackBicycle(SystemDynamics, AffineDynamics, Module):
         SystemDynamics.__init__(self, 6, 2)
         Module.__init__(self)
 
-    def eval_dot_impl(self, x, u, t):
+    def forward(self, x, u, t):
         m = 1.98
         lf = 0.125
         lr = 0.125

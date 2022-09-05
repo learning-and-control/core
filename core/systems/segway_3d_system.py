@@ -69,7 +69,7 @@ class Segway3D(SystemDynamics, AffineDynamics, Module):
     # 	double x_f_tmp;
     #
     # /*  */
-    def eval_dot_impl(self, X, U, t):
+    def forward(self, X, U, t):
         Fric = X[3] - X[6] * model[9];
         Fric = model[12] * tanh(Fric / model[13]) + model[14] * Fric;
         a_tmp = cos(X[5]);

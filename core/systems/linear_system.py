@@ -26,11 +26,11 @@ class LinearSystemDynamics(SystemDynamics, AffineDynamics,
         self.A = Parameter(from_numpy(A).to(float64, copy=True))
         self.B = Parameter(from_numpy(B).to(float64, copy=True))
 
-    def drift_impl(self, x, t):
+    def drift(self, x, t):
 
         return self.A@x
 
-    def act_impl(self, x, t):
+    def act(self, x, t):
         return self.B
 
     def jacobian_impl(self, x, u, t):

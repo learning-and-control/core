@@ -25,9 +25,9 @@ class LQRController(Controller):
         self.P = P
         self.R = R
 
-    def eval(self, x, t):
+    def forward(self, x, t):
         _, B = self.dynamics.linear_system()
-        return -solve(self.R, dot(B.T, dot(self.P, self.dynamics.eval(x, t)))) / 2
+        return -solve(self.R, dot(B.T, dot(self.P, self.dynamics.image(x, t)))) / 2
 
     def build(affine_linearizable_dynamics, Q, R):
         """Create an LQRController from state and action matrices.

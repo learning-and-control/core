@@ -7,10 +7,9 @@ from core.dynamics import FullyActuatedRoboticDynamics
 from core.util import default_fig
 
 
-class InvertedPendulum(FullyActuatedRoboticDynamics, Module):
+class InvertedPendulum(FullyActuatedRoboticDynamics):
     def __init__(self, mass, l, g=9.81):
         FullyActuatedRoboticDynamics.__init__(self, 1, 1)
-        Module.__init__(self)
         self.params = Parameter(tensor([mass, l, g], dtype=float64))
 
     def D(self, q):
@@ -53,7 +52,7 @@ class InvertedPendulum(FullyActuatedRoboticDynamics, Module):
         ax.set_ylabel('$\\dot{\\theta}$ (rad / sec)', fontsize=16)
         ax.set_xlim(-2 * np.pi, 2 * np.pi)
         ax.set_ylim(-10, 10)
-        ax.plot(*xs.T, linewidth=1, color=color)
+        ax.scatter(*xs.T, linewidth=1, color=color)
 
         return fig, ax
 

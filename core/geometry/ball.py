@@ -44,11 +44,11 @@ class Ball(ConvexBody):
         def __init__(self, affine_dynamics):
             self.dynamics = affine_dynamics
 
-        def eval(self, x, t):
-            return 1 - norm(self.dynamics.eval(x, t)) ** 2
+        def image(self, x, t):
+            return 1 - norm(self.dynamics.image(x, t)) ** 2
 
         def eval_grad(self, x, t):
-            return -2 * self.dynamics.eval(x, t)
+            return -2 * self.dynamics.image(x, t)
 
         def drift(self, x, t):
             return dot(self.eval_grad(x, t), self.dynamics.drift(x, t))
