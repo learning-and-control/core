@@ -43,9 +43,9 @@ class SystemDynamics(Dynamics):
         Outputs:
         State at final time: numpy array
         """
-
-        x_dot = lambda t, x: self(x, u_0, t)
-        t_span = th.tensor([t_0, t_f])
+        def x_dot(t, x):
+            return self(x, u_0, t)
+        t_span = th.tensor([t_0, t_f], dtype=x_0.dtype, device=x_0.device)
         res = odeint(func=x_dot, y0=x_0, t=t_span, atol=atol,
                      rtol=rtol).swapaxes(1,0)
         return res[:, -1]
@@ -55,7 +55,7 @@ class SystemDynamics(Dynamics):
 
         Approximated using Runge-Kutta 4,5 solver.
 
-        Actions computed at time steps and held constant over sample period.
+        ActiPons computed at time steps and held constant over sample period.
 
         Inputs:
         Initial state, x_0: numpy array

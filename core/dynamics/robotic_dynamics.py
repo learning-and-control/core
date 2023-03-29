@@ -102,7 +102,7 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
         Generalized forces: numpy array
         """
 
-        return zeros(q.shape[0], self.k)
+        return zeros(q.shape[0], self.k, device=q.device)
 
     def T(self, q, q_dot):
         """Compute kinetic energy.
@@ -135,7 +135,7 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
 
     def drift(self, x, t):
         q, q_dot = self.proportional(x, t), self.derivative(x, t)
-        H_ = self.H(q, q_dot).unsqueeze(1)
+        H_ = self.H(q, q_dot).unsqueeze(-1)
         D_ = self.D(q)
         soln = lstsq(D_, H_).solution[:, :, 0]
         return cat([q_dot, -soln], dim=-1)
@@ -145,7 +145,8 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
         B_ = self.B(q)
         D_ = self.D(q)
         soln = lstsq(D_, B_).solution
-        return cat([zeros((x.shape[0], self.k, self.m), dtype=soln.dtype),
+        return cat([zeros((x.shape[0], self.k, self.m), dtype=soln.dtype,
+                          device=x.device),
                     soln], dim=1)
 
     def proportional(self, x, t):

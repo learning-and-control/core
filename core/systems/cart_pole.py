@@ -1,4 +1,4 @@
-from torch import cat, cos, float64, sin, stack, tensor
+from torch import cat, cos, float64, sin, stack, tensor, zeros_like, ones_like
 from torch.nn import Module, Parameter
 from core.dynamics import RoboticDynamics
 
@@ -12,29 +12,30 @@ class CartPole(RoboticDynamics, Module):
 
     def D(self, q):
         m_c, m_p, l, _ = self.params
-        _, theta = q
+        theta = q[:,1]
         return stack(
-            (stack([m_c + m_p, m_p * l * cos(theta)]),
-             stack([m_p * l * cos(theta), m_p * (l ** 2)])))
+            (stack([m_c + m_p * ones_like(theta), m_p * l * cos(theta)], dim=1),
+             stack([m_p * l * cos(theta), ones_like(theta)*m_p * (l ** 2)], dim=1)), dim=1)
 
     def C(self, q, q_dot):
         _, m_p, l, _ = self.params
-        z = tensor(0, dtype=float64)
-        _, theta = q
-        _, theta_dot = q_dot
-        return stack((stack([z, -m_p * l * theta_dot * sin(theta)]),
-                      stack([z, z])))
+        theta = q[:,1]
+        z = zeros_like(theta)
+        theta_dot = q_dot[:, 1]
+        return stack((stack([z, -m_p * l * theta_dot * sin(theta)], dim=1),
+                      stack([z, z], dim=1)), dim=1)
 
     def U(self, q):
         _, m_p, l, g = self.params
-        _, theta = q
+        theta = q[:,1]
         return m_p * g * l * cos(theta)
 
     def G(self, q):
         _, m_p, l, g = self.params
-        _, theta = q
-        z = tensor(0, dtype=float64)
-        return stack([z, -m_p * g * l * sin(theta)])
+        theta = q[:,1]
+        z = zeros_like(theta)
+        return stack([z, -m_p * g * l * sin(theta)], dim=1)
 
     def B(self, q):
-        return tensor([[1], [0]], dtype=float64)
+        return tensor([[[1], [0]]], dtype=float64, device=q.device
+                      ).expand(q.shape[0], -1, -1)
