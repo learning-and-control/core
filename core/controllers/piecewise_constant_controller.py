@@ -6,6 +6,7 @@ from math import floor
 class PiecewiseConstantController(Controller):
     def __init__(self, dynamics, h, ut, round_mode=True):
         Controller.__init__(self, dynamics)
+        # assuming ut shape = (batch, T, m)
         self.ut = ut
         self.h = h
         self.round_mode_on = round_mode
@@ -26,4 +27,4 @@ class PiecewiseConstantController(Controller):
             t_idx = argmin(abs(self.h - t))
         if t_idx >= self.ut.shape[0]:
             raise OverflowError('[ERROR] Controller called outside horizon.')
-        return self.ut[t_idx]
+        return self.ut[:, t_idx]

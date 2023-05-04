@@ -1,16 +1,30 @@
 from matplotlib.pyplot import figure
 from numpy import array
 import numpy as np
-from torch import cos, eye, float64, sin, stack, tensor
+from torch import cos, eye, float64, sin, stack, zeros, tensor
 from torch.nn import Module, Parameter
-from core.dynamics import FullyActuatedRoboticDynamics
+from core.dynamics import FullyActuatedRoboticDynamics, ObservableDynamics
 from core.util import default_fig
 
-class DoubleInvertedPendulum(FullyActuatedRoboticDynamics, Module):
+class DoubleInvertedPendulum(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
     def __init__(self, m_1, m_2, l_1, l_2, g=9.81):
         FullyActuatedRoboticDynamics.__init__(self, 2, 2)
-        Module.__init__(self)
+        ObservableDynamics.__init__(self, 6)
         self.params = Parameter(tensor([m_1, m_2, l_1, l_2, g], dtype=float64))
+
+    def get_observation(self, state):
+        theta1 = state[..., 0]
+        theta2 = state[..., 1]
+        theta1_dot = state[..., 2]
+        theta2_dot = state[..., 3]
+        return stack([
+            cos(theta1),
+            sin(theta1),
+            cos(theta2),
+            sin(theta2),
+            theta1_dot,
+            theta2_dot
+        ], dim=-1)
 
     def D(self, q):
         m_1, m_2, l_1, l_2, _ = self.params
@@ -24,14 +38,18 @@ class DoubleInvertedPendulum(FullyActuatedRoboticDynamics, Module):
 
     def C(self, q, q_dot):
         _, m_2, l_1, l_2, _ = self.params
-        _, theta_2 = q
-        theta_1_dot, theta_2_dot = q_dot
-        C_11 = tensor(0, dtype=float64)
+        n_batch = q.shape[0]
+        theta_2 = q[:, 1]
+        theta_1_dot = q_dot[:, 0]
+        theta_2_dot = q_dot[:, 1]
+        C_11 = zeros((n_batch,), dtype=q.dtype, device=q.device)
         C_12 = -m_2 * l_1 * l_2 * (2 * theta_1_dot + theta_2_dot) * sin(theta_2)
         C_21 = -C_12 / 2
         C_22 = -m_2 * l_1 * l_2 * theta_1_dot * sin(theta_2) / 2
-        return stack((stack([C_11, C_12]),
-                      stack([C_21, C_22])))
+
+        #TODO: Fix this to work with batches
+        return stack((stack([C_11, C_12], dim=-1),
+                      stack([C_21, C_22], dim=-1)), dim=1)
 
     def B(self, q):
         return eye(2, dtype=float64)

@@ -95,13 +95,13 @@ def test_mpc_linear_system():
                                   solver="GUROBI",
                                   # collocation_mode=TrajectoryOptimizer.COLLOCATION_MODE.CTN_ONE_PT
                                   )
-    trajopt.add_terminal_cost(Q_f=eye(4) * 1e5, offset=x_f)
+    trajopt.add_terminal_cost(Qf=eye(4) * 1e5, xf=x_f)
     trajopt.add_input_constraints(u_min=-70 * ones(2), u_max=50* ones(2))
     # trajopt.add_static_quad_cost()
     trajopt.add_static_quad_cost(Q=array([[1e2, 0, 0, 0],
                                          [0, 1e2, 0, 0],
                                          [0, 0, 1e1, 0],
-                                         [0, 0, 0, 1e1]]), offset=x_f)
+                                         [0, 0, 0, 1e1]]), xf=x_f)
     def mpc_step(x, t, xt_prev, ut_prev):
         xs.append(x)
         xt, ut = trajopt.eval(x, max_cvx_iters=1, ws_xt=xt_prev, ws_ut=ut_prev)
@@ -292,8 +292,8 @@ def test_mpc_segway():
                                   solver="GUROBI")
     trajopt.add_input_constraints(u_min=ones(1) * -15, u_max=ones(1) * 15)
     trajopt.add_static_quad_cost(Q=diag(array([1e3, 1e2, 1e1, 1e1])),
-                                 offset=x_f)
-    trajopt.add_terminal_cost(diag(array([1e5, 1e4, 1e3, 1e3])), offset=x_f)
+                                 xf=x_f)
+    trajopt.add_terminal_cost(diag(array([1e5, 1e4, 1e3, 1e3])), xf=x_f)
     xs = list()
     def mpc_step(x, t, xt_prev, ut_prev):
         xs.append(x)

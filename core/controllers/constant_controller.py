@@ -13,6 +13,5 @@ class ConstantController(Controller):
 
         Controller.__init__(self, dynamics)
         self.u_const = u_const
-
     def forward(self, x, t):
         return self.u_const

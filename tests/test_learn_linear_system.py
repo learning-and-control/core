@@ -69,7 +69,7 @@ def generate_optimal_trajectory(dynamics):
     trajopt.add_static_quad_cost()
     # trajopt.add_static_quad_cost(Q=eye(4) * 1e3, offset=x_f)
     # trajopt.add_static_quad_cost(Q=eye(4) * 1e4, offset=x_f)
-    trajopt.add_terminal_cost(Q_f=eye(4) * 1e5, offset=x_f)
+    trajopt.add_terminal_cost(Qf=eye(4) * 1e5, xf=x_f)
     trajopt.add_input_constraints(ones(2) * -50, ones(2) * 1)
     # can't do hard terminal constraint with very infeasible models
     [xt_mpc, ut] = trajopt.eval(x_0, max_cvx_iters=1)

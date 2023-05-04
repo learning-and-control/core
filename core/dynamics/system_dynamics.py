@@ -45,9 +45,9 @@ class SystemDynamics(Dynamics):
         """
         def x_dot(t, x):
             return self(x, u_0, t)
-        t_span = th.tensor([t_0, t_f], dtype=x_0.dtype, device=x_0.device)
+        t_span = th.stack([t_0, t_f]).to(x_0.device)
         res = odeint(func=x_dot, y0=x_0, t=t_span, atol=atol,
-                     rtol=rtol).swapaxes(1,0)
+                     rtol=rtol, ).swapaxes(1,0)
         return res[:, -1]
 
     def simulate(self, x_0, controller, ts, processed=True, atol=1e-6, rtol=1e-6):
@@ -83,7 +83,7 @@ class SystemDynamics(Dynamics):
             u = controller(x, t)
             us.append(u)
             u = controller.process(u)
-            xs.append(self.step(x, u, t, ts[j + 1]))
+            xs.append(self.step(x, u, t, ts[j + 1], atol=atol, rtol=rtol))
 
         if processed:
             us = [controller.process(u) for u in us]

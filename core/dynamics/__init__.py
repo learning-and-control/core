@@ -15,3 +15,4 @@ from .quadratic_clf import QuadraticCLF
 from .robotic_dynamics import RoboticDynamics
 from .scalar_dynamics import ScalarDynamics
 from .system_dynamics import SystemDynamics
+from .observable_dynamics import ObservableDynamics

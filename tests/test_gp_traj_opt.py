@@ -283,7 +283,7 @@ def test_4D_lin_trajopt():
     trajopt = TrajectoryOptimizer(K, h_k, true_dyn,
                                   TrajectoryOptimizer.COLLOCATION_MODE.CTN_ONE_PT)
     trajopt.add_static_quad_cost()
-    trajopt.add_terminal_cost(Q_f=eye(4) * 1e5, offset=x_f)
+    trajopt.add_terminal_cost(Qf=eye(4) * 1e5, xf=x_f)
     trajopt.add_input_constraints(ones(2) * -9, ones(2) * .95)
     [xt_mpc, ut] = trajopt.eval(x_0, max_cvx_iters=1)
     xs, us = true_dyn.simulate(
@@ -303,7 +303,7 @@ def test_4D_lin_trajopt():
     gp_system = AffineGPSystem(gp_est, 4, 2, h_k)
     gp_trajopt = GPTrajectoryOptimizer(K, h_k, gp_system)
     gp_trajopt.add_static_quad_cost()
-    gp_trajopt.add_terminal_cost(Q_f=eye(4) * 1e5, offset=x_f)
+    gp_trajopt.add_terminal_cost(Qf=eye(4) * 1e5, xf=x_f)
     gp_trajopt.add_input_constraints(ones(2) * -9, ones(2) * 1)
     [xt_gp, ut_gp] = gp_trajopt.eval(x_0, max_cvx_iters=1)
     xs_gp, us_gp = true_dyn.simulate(x_0,
@@ -352,7 +352,7 @@ def test_2D_lin_trajopt():
     trajopt = TrajectoryOptimizer(K, h_k, true_dyn,
                                   TrajectoryOptimizer.COLLOCATION_MODE.CTN_ONE_PT)
     trajopt.add_static_quad_cost()
-    trajopt.add_terminal_cost(Q_f=eye(2) * 1e5, offset=x_f)
+    trajopt.add_terminal_cost(Qf=eye(2) * 1e5, xf=x_f)
     trajopt.add_input_constraints(ones(1) * -max_abs_delta_u, ones(1) *  max_abs_delta_u)
     [xt_mpc, ut] = trajopt.eval(x_0, max_cvx_iters=1)
     xs, us = true_dyn.simulate(x_0,
@@ -379,7 +379,7 @@ def test_2D_lin_trajopt():
     gp_system = AffineGPSystem(gp_est, 2, 1, h_k)
     gp_trajopt = GPTrajectoryOptimizer(K, h_k, gp_system)
     gp_trajopt.add_static_quad_cost()
-    gp_trajopt.add_terminal_cost(Q_f=eye(2) * 1e5, offset=x_f)
+    gp_trajopt.add_terminal_cost(Qf=eye(2) * 1e5, xf=x_f)
     gp_trajopt.add_input_constraints(ones(1) * -max_abs_delta_u,
                                   ones(1) * max_abs_delta_u)
     [xt_gp, ut_gp] = gp_trajopt.eval(x_0, max_cvx_iters=1)

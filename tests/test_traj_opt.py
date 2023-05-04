@@ -83,7 +83,7 @@ def test_input_constraints():
     x_f = array([50, 50, 0, 0])
     trajopt = TrajectoryOptimizer(100, 0.1, linear_dyn)
     trajopt.add_static_quad_cost()
-    trajopt.add_terminal_cost(Q_f=eye(4) * 1e5, offset=x_f)
+    trajopt.add_terminal_cost(Qf=eye(4) * 1e5, xf=x_f)
     trajopt.add_input_constraints(u_min=ones(2) * -50, u_max=ones(2) * 1)
     [xt, ut] = trajopt.eval(x_0)
 
@@ -223,9 +223,9 @@ def  test_linear_integration():
         trajopt = TrajectoryOptimizer(T, hk, system,
                                       collocation_mode=mode)
         trajopt.add_static_quad_cost()
-        trajopt.add_terminal_cost(Q_f=eye(4) * 1e5, offset=x_f)
+        trajopt.add_terminal_cost(Qf=eye(4) * 1e5, xf=x_f)
         trajopt.add_input_constraints(u_min=ones(2) * -50, u_max=ones(2) * 1)
-        return trajopt.eval(x_0=x_0, max_cvx_iters=1)
+        return trajopt.eval(x0=x_0, max_cvx_iters=1)
 
     [xt_lin, ut_lin] = sqp_step(TrajectoryOptimizer.COLLOCATION_MODE.CTN_ONE_PT)
     [xs_lin, us_lin] = system.simulate(x_0, PiecewiseConstantController(system,hk,ut_lin), ts)

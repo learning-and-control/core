@@ -34,4 +34,8 @@ class AffineDynamics(Dynamics):
         pass
 
     def forward(self, x, u, t):
-        return self.drift(x, t) + (self.act(x,t)@u[:,:,None]).squeeze(-1)
+        fx = self.drift(x, t)
+        gx = self.act(x, t)
+        if u.ndim == 2: # assuming u shape = (batch, m)
+            u = u.unsqueeze(-1)
+        return fx + (gx @ u).squeeze(-1)

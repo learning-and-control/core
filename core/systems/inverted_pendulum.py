@@ -3,14 +3,30 @@ from numpy import array
 import numpy as np
 from torch import cos, float64, sin, stack, tensor
 from torch.nn import Module, Parameter
-from core.dynamics import FullyActuatedRoboticDynamics
+from core.dynamics import FullyActuatedRoboticDynamics, ObservableDynamics
 from core.util import default_fig
 
 
-class InvertedPendulum(FullyActuatedRoboticDynamics):
+class InvertedPendulum(FullyActuatedRoboticDynamics, ObservableDynamics):
     def __init__(self, mass, l, g=9.81):
         FullyActuatedRoboticDynamics.__init__(self, 1, 1)
+        ObservableDynamics.__init__(self, 3)
         self.params = Parameter(tensor([mass, l, g], dtype=float64))
+
+    def forward(self, x, u, t):
+        theta_dot = x[:, 1]
+        theta_ddot = (self.g/self.l)*sin(x[:, 0]) + u[:, 0]/(self.mass * self.l**2)
+        xdot = stack([theta_dot, theta_ddot], dim=-1)
+        return xdot
+
+    def get_observation(self, state):
+        theta = state[..., 0]
+        theta_dot = state[..., 1]
+        return stack([
+            cos(theta),
+            sin(theta),
+            theta_dot
+        ], dim=-1)
 
     def D(self, q):
         return (self.mass * (self.l ** 2))[None, None, None].expand(q.shape[0], -1, -1)
