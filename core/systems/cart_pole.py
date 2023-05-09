@@ -1,4 +1,4 @@
-from torch import cat, cos, float64, sin, stack, tensor, zeros_like, ones_like
+from torch import cat, cos, float64, sin, stack, tensor, zeros_like, ones_like, atan2
 from torch.nn import Module, Parameter
 from core.dynamics import RoboticDynamics, AffineDynamics, ObservableDynamics
 
@@ -23,6 +23,18 @@ class CartPole(RoboticDynamics, ObservableDynamics):
             x,
             cos(theta),
             sin(theta),
+            x_dot,
+            theta_dot
+        ], dim=-1)
+    def to_principal_coordinates(self, state):
+        x = state[..., 0]
+        theta = state[..., 1]
+        x_dot = state[..., 2]
+        theta_dot = state[..., 3]
+        p_theta = atan2(sin(theta), cos(theta)) #y, x
+        return stack([
+            x,
+            p_theta,
             x_dot,
             theta_dot
         ], dim=-1)

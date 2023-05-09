@@ -19,7 +19,7 @@ class SystemDynamics(Dynamics):
         Number of states, n: int
         Number of actions, m: int
         """
-        super().__init__()
+        Dynamics.__init__(self)
         self.n = n
         self.m = m
 

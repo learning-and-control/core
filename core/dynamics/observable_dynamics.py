@@ -8,3 +8,7 @@ class ObservableDynamics(ABC):
     @abstractmethod
     def get_observation(self, state):
         pass
+
+    @abstractmethod
+    def to_principal_coordinates(self, state):
+        pass

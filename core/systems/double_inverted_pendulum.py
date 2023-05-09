@@ -1,7 +1,8 @@
 from matplotlib.pyplot import figure
 from numpy import array
 import numpy as np
-from torch import cos, eye, float64, sin, stack, zeros, tensor
+from torch import cos, eye, float64, sin, stack, zeros, tensor, atan2, \
+    unbind, ones_like
 from torch.nn import Module, Parameter
 from core.dynamics import FullyActuatedRoboticDynamics, ObservableDynamics
 from core.util import default_fig
@@ -26,15 +27,30 @@ class DoubleInvertedPendulum(FullyActuatedRoboticDynamics, Module, ObservableDyn
             theta2_dot
         ], dim=-1)
 
+    def to_principal_coordinates(self, state):
+        theta1 = state[..., 0]
+        theta2 = state[..., 1]
+        theta1_dot = state[..., 2]
+        theta2_dot = state[..., 3]
+        p_theta1 = atan2(sin(theta1), cos(theta1)) #y, x
+        p_theta2 = atan2(sin(theta2), cos(theta2)) #y, x
+        return stack([
+            p_theta1,
+            p_theta2,
+            theta1_dot,
+            theta2_dot
+        ], dim=-1)
+
+
     def D(self, q):
         m_1, m_2, l_1, l_2, _ = self.params
-        _, theta_2 = q
+        _, theta_2 = unbind(q, dim=-1)
         D_11 = (m_1 + m_2) * (l_1 ** 2) + 2 * m_2 * l_1 * l_2 * cos(theta_2) + m_2 * (l_2 ** 2)
         D_12 = m_2 * l_1 * l_2 * cos(theta_2) + m_2 * (l_2 ** 2)
         D_21 = D_12
-        D_22 = m_2 * (l_2 ** 2)
-        return stack((stack([D_11, D_12]),
-                      stack([D_21, D_22])))
+        D_22 = m_2 * (l_2 ** 2) * ones_like(D_11)
+        return stack((stack([D_11, D_12], dim=-1),
+                      stack([D_21, D_22], dim=-1)), dim=1)
 
     def C(self, q, q_dot):
         _, m_2, l_1, l_2, _ = self.params
@@ -46,13 +62,11 @@ class DoubleInvertedPendulum(FullyActuatedRoboticDynamics, Module, ObservableDyn
         C_12 = -m_2 * l_1 * l_2 * (2 * theta_1_dot + theta_2_dot) * sin(theta_2)
         C_21 = -C_12 / 2
         C_22 = -m_2 * l_1 * l_2 * theta_1_dot * sin(theta_2) / 2
-
-        #TODO: Fix this to work with batches
         return stack((stack([C_11, C_12], dim=-1),
                       stack([C_21, C_22], dim=-1)), dim=1)
 
     def B(self, q):
-        return eye(2, dtype=float64)
+        return eye(2, dtype=q.dtype, device=q.device)[None].expand(q.shape[0], -1, -1)
 
     def U(self, q):
         m_1, m_2, l_1, l_2, g = self.params
@@ -61,10 +75,10 @@ class DoubleInvertedPendulum(FullyActuatedRoboticDynamics, Module, ObservableDyn
 
     def G(self, q):
         m_1, m_2, l_1, l_2, g = self.params
-        theta_1, theta_2 = q
+        theta_1, theta_2 = unbind(q, dim=-1)
         G_1 = -(m_1 + m_2) * g * l_1 * sin(theta_1) - m_2 * g * l_2 * sin(theta_1 + theta_2)
         G_2 = -m_2 * g * l_2 * sin(theta_1 + theta_2)
-        return stack([G_1, G_2])
+        return stack([G_1, G_2], dim=-1)
 
     def plot_coordinates(self, ts, qs, fig=None, ax=None, labels=None):
         fig, ax = default_fig(fig, ax)

@@ -8,7 +8,7 @@ class Dynamics(Module):
     Override image, forward.
     """
     def __init__(self):
-        super().__init__()
+        Module.__init__(self)
 
     def image(self, x, t):
         """Compute representation.

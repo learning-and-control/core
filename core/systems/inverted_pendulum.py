@@ -1,7 +1,7 @@
 from matplotlib.pyplot import figure
 from numpy import array
 import numpy as np
-from torch import cos, float64, sin, stack, tensor
+from torch import cos, float64, sin, stack, tensor, atan2
 from torch.nn import Module, Parameter
 from core.dynamics import FullyActuatedRoboticDynamics, ObservableDynamics
 from core.util import default_fig
@@ -25,6 +25,15 @@ class InvertedPendulum(FullyActuatedRoboticDynamics, ObservableDynamics):
         return stack([
             cos(theta),
             sin(theta),
+            theta_dot
+        ], dim=-1)
+
+    def to_principal_coordinates(self, state):
+        theta = state[..., 0]
+        theta_dot = state[..., 1]
+        principal_theta = atan2(sin(theta), cos(theta)) #y, x
+        return stack([
+            principal_theta,
             theta_dot
         ], dim=-1)
 
