@@ -4,6 +4,7 @@ from .double_inverted_pendulum import DoubleInvertedPendulum
 from .inverted_pendulum import InvertedPendulum
 from .planar_quadrotor import PlanarQuadrotor
 from .polynomial_system import PolynomialSystem
+from .spatial_quadrotor import Quadrotor
 
 from .linear_system import LinearSystemDynamics, NIntegrator, RandomLinearSystem
 from .segway_system import Segway

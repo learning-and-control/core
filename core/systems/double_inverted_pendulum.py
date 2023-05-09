@@ -80,6 +80,43 @@ class DoubleInvertedPendulum(FullyActuatedRoboticDynamics, Module, ObservableDyn
         G_2 = -m_2 * g * l_2 * sin(theta_1 + theta_2)
         return stack([G_1, G_2], dim=-1)
 
+    def forward(self, X, U, t):
+        # unpacking params and states
+        m1, m2, l1, l2, g = self.params
+        th1 = X[..., 0] + np.pi
+        th2 = X[..., 1]
+        dth1 = X[..., 2]
+        dth2 = X[..., 3]
+        u1 = U[..., 0]
+        u2 = U[..., 1]
+
+        # optimized forward dynamics
+        t2 = cos(th2)
+        t3 = sin(th1)
+        t4 = sin(th2)
+        t5 = th1 + th2
+        t6 = 2 * dth1
+        t7 = l1 ** 2
+        t8 = t2 ** 2
+        t9 = l1 * t2
+        t10 = sin(t5)
+        t11 = 1.0 / t7
+        t12 = dth2 + t6
+        t13 = m1 * t7
+        t14 = m2 * t7
+        t15 = m2 * t8
+        t16 = l2 + t9
+        t17 = l2 * m2 * t10
+        t21 = dth2 * l1 * l2 * m2 * t4 * t12
+        t18 = -t15
+        t19 = g * t17
+        t20 = m1 + m2 + t18
+        t22 = 1.0 / t20
+        ddth1 = (t21 + u1 - g * (t17 + l1 * t3 * (m1 + m2))) / (t13 + t14 - t8 * t14) + (t16 * (t19 - u2 - (dth1 * dth2 * l1 * l2 * m2 * t4) / 2.0 + (dth1 * l1 * l2 * m2 * t4 * t12) / 2.0)) / (l2 * t13 + l2 * t14 - l2 * t8 * t14)
+        ddth2 = -(t11 * t16 * t22 * (t21 + u1 - g * (t17 + l1 * m1 * t3 + l1 * m2 * t3))) / l2 - (1.0 / l2 ** 2 * t11 * t22 * (t19 - u2 + dth1 ** 2 * l1 * l2 * m2 * t4) * (t13 + t14 + l2 ** 2 * m2 + l2 * m2 * t9 * 2.0)) / m2
+
+        return stack((dth1, dth2, ddth1, ddth2), dim=-1)
+
     def plot_coordinates(self, ts, qs, fig=None, ax=None, labels=None):
         fig, ax = default_fig(fig, ax)
 
