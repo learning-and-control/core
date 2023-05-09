@@ -130,7 +130,6 @@ class RoboticDynamics(SystemDynamics, AffineDynamics, PDDynamics):
         Cq_dot_ = matmul(C_, q_dot[..., None])[..., 0]
         G_ = self.G(q)
         F_ext_ = self.F_ext(q, q_dot)
-
         return Cq_dot_ + G_ - F_ext_
 
     def drift(self, x, t):
