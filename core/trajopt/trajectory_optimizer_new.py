@@ -8,8 +8,6 @@ from core.dynamics.affine_dynamics import AffineDynamics
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 """[TODO]
-* terminal/traj constraints
-* examples w/3d quadrotor
 * obstacles
 """
 
@@ -26,6 +24,7 @@ class TrajectoryOptimizer:
         Qf: np.ndarray,
         u_min: np.ndarray | None = None,
         u_max: np.ndarray | None = None,
+        terminal_state_constraint: bool = False,
         # trapezoidal: bool = False,
     ) -> None:
         """Initializes the optimizer.
@@ -48,6 +47,8 @@ class TrajectoryOptimizer:
             Lower bounds on the control input.
         u_max : np.ndarray | None, shape=(m,)
             Upper bounds on the control input.
+        terminal_state_constraint : bool, default=False
+            Whether to enforce a (point) terminal state constraint.
 
         Unused
         ------
@@ -62,6 +63,7 @@ class TrajectoryOptimizer:
         assert isinstance(Qf, np.ndarray)
         assert isinstance(u_min, np.ndarray) or u_min is None
         assert isinstance(u_max, np.ndarray) or u_max is None
+        assert isinstance(terminal_state_constraint, bool)
         # assert isinstance(trapezoidal, bool)
 
         assert N > 1
@@ -82,6 +84,7 @@ class TrajectoryOptimizer:
         self.dt = dt
         self.u_min = u_min
         self.u_max = u_max
+        self.terminal_state_constraint = terminal_state_constraint
         # self.trapezoidal = trapezoidal
         self.n = dyn.n  # state dimension
         self.m = dyn.m  # control dimension
@@ -91,7 +94,9 @@ class TrajectoryOptimizer:
         self.R = R
         self.Qf = Qf
 
-        self.x0 = cp.Parameter((self.n))  # initial state
+        self.x0 = cp.Parameter(self.n)  # initial state
+        self.xs_des = cp.Parameter((self.N, self.n))  # desired trajectory for tracking
+        self.us_des = cp.Parameter((self.N - 1, self.m))
         self.xs = cp.Variable((N, self.n))  # [DECISION VARIABLE] states
         self.us = cp.Variable((N - 1, self.m))  # [DECISION VARIABLE] control inputs
         
@@ -101,6 +106,9 @@ class TrajectoryOptimizer:
         self.Hs = [cp.Parameter((self.n)) for _ in range(N - 1)]
 
         self.constraints = [self.xs[0, :] == self.x0]  # initial condition
+        if terminal_state_constraint:
+            self.xf_des = cp.Parameter(self.n)
+            self.constraints += [self.xs[-1, :] == self.xf_des]
         for k in range(N - 1):
             F = self.Fs[k]
             G = self.Gs[k]
@@ -118,10 +126,17 @@ class TrajectoryOptimizer:
                 ]  # maximum input constraints
 
         # setting cost
-        self.cost = cp.quad_form(self.xs[-1, :], Qf)  # terminal cost
+        # for numerical overflow protection, divide (x, u) costs by (N, N - 1)
+        self.cost = cp.quad_form(
+            self.xs[-1, :] - self.xs_des[-1, :], Qf
+        ) / N  # terminal cost
         for k in range(N - 1):
-            self.cost += cp.quad_form(self.xs[k, :], Q)  # stage state cost
-            self.cost += cp.quad_form(self.us[k, :], R)  # stage input cost
+            self.cost += cp.quad_form(
+                self.xs[k, :] - self.xs_des[k, :], Q
+            ) / N # stage state cost
+            self.cost += cp.quad_form(
+                self.us[k, :] - self.us_des[k, :], R
+            ) / (N - 1) # stage input cost
 
         # initializing problem
         self.prob = cp.Problem(cp.Minimize(self.cost), self.constraints)
@@ -193,6 +208,9 @@ class TrajectoryOptimizer:
         t: float,
         xs_guess: torch.Tensor | None = None,
         us_guess: torch.Tensor | None = None,
+        xs_des: torch.Tensor | None = None,
+        us_des: torch.Tensor | None = None,
+        xf_des: torch.Tensor | None = None,
         max_outer_iters: int = 100,
         sqp_tol: float = 1e-5,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -208,6 +226,12 @@ class TrajectoryOptimizer:
             Initial guess for the solver.
         us_guess : torch.Tensor | None, shape=(N - 1, m), default=None
             Initial guess for the solver.
+        xs_des: torch.Tensor | None, default=None
+            A desired trajectory for the states.
+        us_des: torch.Tensor | None, default=None
+            A desired trajectory for the inputs.
+        xf_des: torch.Tensor | None, default=None
+            A desired final state constraint.
         max_outer_iters : int, default=100
             Maximum number of outer iterations of SQP.
         sqp_tol : float, default=1e-5
@@ -225,6 +249,22 @@ class TrajectoryOptimizer:
             assert xs_guess.shape == (self.N, self.n)
         if us_guess is not None:
             assert us_guess.shape == (self.N - 1, self.m)
+        if xs_des is not None:
+            assert xs_des.shape == (self.N, self.n)
+        else:
+            xs_des = torch.zeros((self.N, self.n), dtype=torch.float64, device=device)
+        if us_des is not None:
+            assert us_des.shape == (self.N - 1, self.m)
+        else:
+            us_des = torch.zeros(
+                (self.N - 1, self.m), dtype=torch.float64, device=device
+            )
+        assert self.terminal_state_constraint == (xf_des is not None)
+        if xf_des is not None:
+            self.xf_des.value = xf_des.detach().numpy()  # terminal state constraint
+        self.xs_des.value = xs_des.detach().numpy()  # desired trajectory to track
+        self.us_des.value = us_des.detach().numpy()
+
         assert isinstance(max_outer_iters, int)
         assert isinstance(sqp_tol, float)
         assert max_outer_iters > 0
@@ -276,8 +316,10 @@ class TrajectoryOptimizer:
                 solver=cp.GUROBI,
                 warm_start=True,
                 # verbose=True,
-                presolve_level=2,
+                # presolve_level=2,
             )
+            if self.xs.value is None:
+                raise RuntimeException("MPC problem is infeasible!")
             xs_opt = torch.tensor(self.xs.value, dtype=torch.float64, device=device)
             us_opt = torch.tensor(self.us.value, dtype=torch.float64, device=device)
 
@@ -326,19 +368,25 @@ if __name__ == "__main__":
     pend = InvertedPendulum(mass, l)
 
     # traj opt
-    N = 21
-    dt = 0.25
+    N = 51
+    dt = 0.1
     Q = np.diag([1e3, 1e2])
     R = 1e-3 * np.eye(1)
-    Qf = np.diag([1e7, 1e6])
+    Qf = np.diag([1e6, 1e5])
     u_min = np.array([-2.0])
     u_max = np.array([2.0])
-    traj_opt = TrajectoryOptimizer(pend, N, dt, Q, R, Qf, u_min, u_max)
+    tsc = False
+    traj_opt = TrajectoryOptimizer(
+        pend, N, dt, Q, R, Qf, u_min, u_max, terminal_state_constraint=tsc
+    )
 
     # optimizing traj
     x0 = torch.tensor([-np.pi, 0.0], dtype=torch.float64, device=device)
+    if tsc:
+        xf_des = torch.zeros(2, dtype=torch.float64, device=device)
+    else:
+        xf_des = None
     t = 0.0
-    # xs_opt, us_opt = traj_opt.compute_trajectory(x0, t)
 
     xs_intermediate = []
     counter = 0
@@ -349,11 +397,22 @@ if __name__ == "__main__":
         global counter
         xs_guess = xt_prev.squeeze(0) if xt_prev is not None else None
         us_guess = ut_prev.squeeze(0) if ut_prev is not None else None
+
+        # [OPTION] desired state trajectory that is a linear interpolation to origin
+        # xs_des = torch.stack(
+        #     [
+        #         (max(5.0 - (t + _t), 0.0)) * x.squeeze(0)
+        #         for _t in np.linspace(0, dt * (N - 1), N)
+        #     ]
+        # )
+        xs_des = None
         xs, us = traj_opt.compute_trajectory(
             x.squeeze(0),
             t,
             xs_guess=xs_guess,
             us_guess=us_guess,
+            xs_des=xs_des,
+            xf_des=xf_des,
         )
         xs_intermediate.append(x.squeeze(0).detach().numpy())
 
@@ -373,6 +432,7 @@ if __name__ == "__main__":
             )
             plt.show()
         counter += 1
+        print(counter)
         return xs[None, ...], us[None, ...]
 
     mpc_ctrl = MPCController(pend, _traj_opt_wrapper)
@@ -380,7 +440,7 @@ if __name__ == "__main__":
     xs_sol, _ = pend.simulate(
         x0[None, ...],
         controller=mpc_ctrl,
-        ts=torch.linspace(0, 5, 201, dtype=torch.float64, device=device),
+        ts=torch.linspace(0, 7, 71, dtype=torch.float64, device=device),
     )
 
     import matplotlib.pyplot as plt
