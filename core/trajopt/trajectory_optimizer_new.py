@@ -172,22 +172,17 @@ class TrajectoryOptimizer:
         assert As.shape == (self.N - 1, self.n, self.n)
         assert Bs.shape == (self.N - 1, self.n, self.m)
 
-        # computing Fs, Gs, Hs
-        Fs = []
-        Gs = []
-        Hs = []
-        for k in range(self.N - 1):
-            A = As[k, ...]
-            B = Bs[k, ...]
-            C = Cs[k, ...]
+        # [NOEL] converting to F, G, H in the A non-invertible case
+        # shape=(N - 1, n + m + 1, n + m + 1)
+        block = np.zeros((self.N - 1, self.n + self.m + 1, self.n + self.m + 1))
+        block[:, :self.n, :self.n] = As
+        block[:, :self.n, self.n:(self.n + self.m)] = Bs
+        block[:, :self.n, -1] = Cs
 
-            F = scipy.linalg.expm(self.dt * A)  # (n, n)
-            _pre = np.linalg.lstsq(A, F - np.eye(self.n), rcond=None)[0]
-            G = _pre @ B
-            H = _pre @ C
-            Fs.append(F)
-            Gs.append(G)
-            Hs.append(H)
+        expm_block = scipy.linalg.expm(self.dt * block)
+        Fs = expm_block[..., :self.n, :self.n]  # (N - 1, n, n)
+        Gs = expm_block[..., :self.n, self.n:(self.n + self.m)]  # (N - 1, n, m)
+        Hs = expm_block[..., :self.n, -1]  # (N - 1, n)
 
         return Fs, Gs, Hs
 
@@ -244,12 +239,13 @@ class TrajectoryOptimizer:
             us_prev = us_guess
         if xs_guess is None:
             # xs_prev = np.tile(x0, (self.N, 1))  # (N, n)
-            ctrl = PiecewiseConstantController(
-                self.dyn, self.dt, torch.tensor(us_prev)[None, ...]
-            )
-            _xs_prev, _ = self.dyn.simulate(
-                torch.tensor(x0)[None, ...], controller=ctrl, ts=torch.tensor(_ts)
-            )
+            with torch.no_grad():
+                ctrl = PiecewiseConstantController(
+                    self.dyn, self.dt, torch.tensor(us_prev)[None, ...]
+                )
+                _xs_prev, _ = self.dyn.simulate(
+                    torch.tensor(x0)[None, ...], controller=ctrl, ts=torch.tensor(_ts)
+                )
             xs_prev = _xs_prev.detach().numpy().squeeze(0)
         else:
             xs_prev = xs_guess
@@ -263,13 +259,18 @@ class TrajectoryOptimizer:
 
             # setting optimization parameters
             self.x0.value = xs_prev[0, :]
-            for k in range(len(self.Fs)):
-                self.Fs[k].value = Fs[k]
-                self.Gs[k].value = Gs[k]
-                self.Hs[k].value = Hs[k]
+            for k in range(self.N - 1):
+                self.Fs[k].value = Fs[k, ...]
+                self.Gs[k].value = Gs[k, ...]
+                self.Hs[k].value = Hs[k, ...]
 
             # solving
-            self.prob.solve(solver=cp.GUROBI, warm_start=True)
+            self.prob.solve(
+                solver=cp.GUROBI,
+                warm_start=True,
+                # verbose=True,
+                presolve_level=2,
+            )
             xs_opt = self.xs.value
             us_opt = self.us.value
 
@@ -284,112 +285,119 @@ class TrajectoryOptimizer:
 
         return xs_opt, us_opt
 
-if __name__ == "__main__":
-    from core.systems import Quadrotor
-    from core.systems import InvertedPendulum
+# if __name__ == "__main__":
+#     from core.systems import Quadrotor
+#     from core.systems import InvertedPendulum
 
-    # # quadrotor
-    # mass = 1.0  # mass
-    # I = np.array([1.0, 1.0, 1.0])  # principal moments of inertia
-    # kf = 1.0  # thrust factor
-    # km = 1.0  # drag factor
-    # l = 0.1  # rotor arm length
-    # Jtp = None
-    # quad = Quadrotor(mass, I, kf, km, l, Jtp)
+#     # # quadrotor
+#     # mass = 1.0  # mass
+#     # I = np.array([1.0, 1.0, 1.0])  # principal moments of inertia
+#     # kf = 1.0  # thrust factor
+#     # km = 1.0  # drag factor
+#     # l = 0.1  # rotor arm length
+#     # Jtp = None
+#     # quad = Quadrotor(mass, I, kf, km, l, Jtp)
 
-    # # traj opt
-    # N = 2
-    # dt = 0.1
-    # Q = np.eye(12)
-    # R = 0.01 * np.eye(4)
-    # Qf = np.eye(12)
-    # u_min = np.zeros(4)
-    # u_max = None
-    # traj_opt = TrajectoryOptimizer(quad, N, dt, Q, R, Qf, u_min, u_max)
+#     # # traj opt
+#     # N = 2
+#     # dt = 0.1
+#     # Q = np.eye(12)
+#     # R = 0.01 * np.eye(4)
+#     # Qf = np.eye(12)
+#     # u_min = np.zeros(4)
+#     # u_max = None
+#     # traj_opt = TrajectoryOptimizer(quad, N, dt, Q, R, Qf, u_min, u_max)
 
-    # # optimizing traj
-    # x0 = np.zeros(12)
-    # t = 0.0
-    # xs_opt, us_opt = traj_opt.compute_trajectory(x0, t)
+#     # # optimizing traj
+#     # x0 = np.zeros(12)
+#     # t = 0.0
+#     # xs_opt, us_opt = traj_opt.compute_trajectory(x0, t)
 
-    # inverted pend
-    mass = 1.0  # mass
-    l = 1.0  # length
-    pend = InvertedPendulum(mass, l)
+#     # inverted pend
+#     mass = 1.0  # mass
+#     l = 1.0  # length
+#     pend = InvertedPendulum(mass, l)
 
-    # traj opt
-    N = 75
-    dt = 0.03947368421
-    Q = np.diag([1e3, 1e2])
-    R = 1e-3 * np.eye(1)
-    Qf = np.diag([1e7, 1e6])
-    u_min = np.array([-2.0])
-    u_max = np.array([2.0])
-    traj_opt = TrajectoryOptimizer(pend, N, dt, Q, R, Qf, u_min, u_max)
+#     # traj opt
+#     N = 21
+#     dt = 0.25
+#     Q = np.diag([1e3, 1e2])
+#     R = 1e-3 * np.eye(1)
+#     Qf = np.diag([1e7, 1e6])
+#     u_min = np.array([-2.0])
+#     u_max = np.array([2.0])
+#     traj_opt = TrajectoryOptimizer(pend, N, dt, Q, R, Qf, u_min, u_max)
 
-    # optimizing traj
-    x0 = np.array([-np.pi, 0.0])
-    t = 0.0
-    # xs_opt, us_opt = traj_opt.compute_trajectory(x0, t)
+#     # optimizing traj
+#     x0 = np.array([-np.pi, 0.0])
+#     t = 0.0
+#     # xs_opt, us_opt = traj_opt.compute_trajectory(x0, t)
 
-    xs_intermediate = []
+#     xs_intermediate = []
+#     counter = 0
 
-    import matplotlib.pyplot as plt
-    plt.ion()
-    plt.show()
+#     import matplotlib.pyplot as plt
     
-    def _traj_opt_wrapper(x, t, xt_prev, ut_prev):
-        xs_guess = xt_prev.detach().numpy().squeeze(0) if xt_prev is not None else None
-        us_guess = ut_prev.detach().numpy().squeeze(0) if ut_prev is not None else None
-        xs, us = traj_opt.compute_trajectory(
-            x.squeeze(0).detach().numpy(),
-            t,
-            xs_guess=xs_guess,
-            us_guess=us_guess,
-        )
-        xs_intermediate.append(x.squeeze(0).detach().numpy())
-        fig, ax = pend.plot_states(
-            np.linspace(0.0, dt * (len(xs_intermediate) - 1), len(xs_intermediate)),
-            np.stack(xs_intermediate, axis=0),
-            color="black",
-        )
-        pend.plot_states(
-            np.linspace(t, t + dt * (N - 1), N),
-            xs,
-            color="red",
-            fig=fig,
-            ax=ax,
-        )
-        plt.draw()
-        plt.pause(0.001)
-        return torch.tensor(xs)[None, ...], torch.tensor(us)[None, ...]
+#     def _traj_opt_wrapper(x, t, xt_prev, ut_prev):
+#         global counter
+#         xs_guess = xt_prev.detach().numpy().squeeze(0) if xt_prev is not None else None
+#         us_guess = ut_prev.detach().numpy().squeeze(0) if ut_prev is not None else None
+#         xs, us = traj_opt.compute_trajectory(
+#             x.squeeze(0).detach().numpy(),
+#             t,
+#             xs_guess=xs_guess,
+#             us_guess=us_guess,
+#         )
+#         xs_intermediate.append(x.squeeze(0).detach().numpy())
 
-    mpc_ctrl = MPCController(pend, _traj_opt_wrapper)
+#         # intermediate plots
+#         if counter % 10 == 0:
+#             fig, ax = pend.plot_states(
+#                 np.linspace(0.0, dt * (len(xs_intermediate) - 1), len(xs_intermediate)),
+#                 np.stack(xs_intermediate, axis=0),
+#                 color="black",
+#             )
+#             pend.plot_states(
+#                 np.linspace(t, t + dt * (N - 1), N),
+#                 xs,
+#                 color="red",
+#                 fig=fig,
+#                 ax=ax,
+#             )
+#             plt.show()
+#         counter += 1
+#         return torch.tensor(xs)[None, ...], torch.tensor(us)[None, ...]
 
-    xs_sol, _ = pend.simulate(
-        torch.tensor(x0)[None, ...], controller=mpc_ctrl, ts=torch.linspace(0, 3, 350)
-    )
+#     mpc_ctrl = MPCController(pend, _traj_opt_wrapper)
 
-    breakpoint()
+#     xs_sol, _ = pend.simulate(
+#         torch.tensor(x0)[None, ...], controller=mpc_ctrl, ts=torch.linspace(0, 5, 201)
+#     )
 
-    # # plotting
-    # ts = np.linspace(t, t + dt * (N - 1), N)
-    # # breakpoint()
-    # fig, ax = pend.plot_states(
-    #     ts,
-    #     np.stack(xs_opt, axis=0),
-    #     color="black",
-    # )
-    # radius = 0.5
-    # # add_points(ax=ax, coordinates=xs_opt[0].detach().numpy(),
-    # #            radius=radius, color="blue")
-    # # add_points(ax=ax, coordinates=xs_opt[-1].detach().numpy(),
-    # #            radius=radius*.8, color="green")
-    # pend.plot_states(ts, xs_opt, color="red",
-    #                    fig=fig,
-    #                    ax=ax)
-    # import matplotlib.pyplot as plt
-    # plt.show()
+#     import matplotlib.pyplot as plt
+#     plt.plot(xs_sol[0, :, 0].detach().numpy(), xs_sol[0, :, 1].detach().numpy())
+#     plt.show()
 
-    # import matplotlib.pyplot as plt
-    # breakpoint()
+#     breakpoint()
+
+#     # # plotting
+#     # ts = np.linspace(t, t + dt * (N - 1), N)
+#     # # breakpoint()
+#     # fig, ax = pend.plot_states(
+#     #     ts,
+#     #     np.stack(xs_opt, axis=0),
+#     #     color="black",
+#     # )
+#     # radius = 0.5
+#     # # add_points(ax=ax, coordinates=xs_opt[0].detach().numpy(),
+#     # #            radius=radius, color="blue")
+#     # # add_points(ax=ax, coordinates=xs_opt[-1].detach().numpy(),
+#     # #            radius=radius*.8, color="green")
+#     # pend.plot_states(ts, xs_opt, color="red",
+#     #                    fig=fig,
+#     #                    ax=ax)
+#     # import matplotlib.pyplot as plt
+#     # plt.show()
+
+#     # import matplotlib.pyplot as plt
+#     # breakpoint()
