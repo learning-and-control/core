@@ -10,6 +10,13 @@ from cvxpylayers.torch import CvxpyLayer
 from scipy import optimize
 from itertools import count
 
+"""TODOs
+
+- obstacle parameterization + constraints (integer programming?)
+- get rid of cvxpylayers
+- 
+"""
+
 class TrajectoryOptimizer(nn.Module):
     def __init__(self, T, h_k,
                  dynamics: AffineDynamics,

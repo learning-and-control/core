@@ -20,11 +20,11 @@ class PiecewiseConstantController(Controller):
                 t_idx = int(rint(t / self.h))
             else:
                 t_idx = floor(t / self.h)
-                if t_idx == self.ut.shape[0]:
+                if t_idx == self.ut.shape[1]:
                     #off by one can happen because of floating point errors
                     t_idx -= 1
         else:
             t_idx = argmin(abs(self.h - t))
-        if t_idx >= self.ut.shape[0]:
+        if t_idx >= self.ut.shape[1]:
             raise OverflowError('[ERROR] Controller called outside horizon.')
         return self.ut[:, t_idx]

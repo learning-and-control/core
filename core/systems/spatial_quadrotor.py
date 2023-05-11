@@ -91,7 +91,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
 
         # 12 states, 4 inputs, is a spatially 3D system
         # full-state observation, but the angles are observed as sin/cos pairs: 15-dim
-        FullyActuatedRoboticDynamics.__init__(self, 12, 4)
+        FullyActuatedRoboticDynamics.__init__(self, 6, 4)
         ObservableDynamics.__init__(self, 15)
         _Jtp = Parameter(tensor(Jtp, dtype=float64, device=device)) if Jtp is not None else None
         self.params = (
@@ -419,7 +419,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
             q = s[..., 10]
 
             wsq = self.invV @ u
-            assert all(wsq >= 0.0)
+            assert torch.all(wsq >= 0.0)
             w = torch.sqrt(wsq)
             w[..., 0] *= -1
             w[..., 2] *= -1

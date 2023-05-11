@@ -14,8 +14,8 @@ class InvertedPendulum(FullyActuatedRoboticDynamics, ObservableDynamics):
         self.params = Parameter(tensor([mass, l, g], dtype=float64))
 
     def forward(self, x, u, t):
-        theta_dot = x[:, 1]
-        theta_ddot = (self.g/self.l)*sin(x[:, 0]) + u[:, 0]/(self.mass * self.l**2)
+        theta_dot = x[..., 1]
+        theta_ddot = (self.g/self.l)*sin(x[..., 0]) + u[..., 0]/(self.mass * self.l**2)
         xdot = stack([theta_dot, theta_ddot], dim=-1)
         return xdot
 
