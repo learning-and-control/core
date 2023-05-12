@@ -7,10 +7,6 @@ from core.dynamics.affine_dynamics import AffineDynamics
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-"""[TODO]
-* obstacles
-"""
-
 class TrajectoryOptimizer:
     """A QP solver that solves the finite-horizon optimal control problem."""
 
@@ -24,8 +20,9 @@ class TrajectoryOptimizer:
         Qf: np.ndarray,
         u_min: np.ndarray | None = None,
         u_max: np.ndarray | None = None,
+        safe_region_list: list[tuple[np.ndarray, np.ndarray]] | None = None,
+        M: float = 10000.0,
         terminal_state_constraint: bool = False,
-        # trapezoidal: bool = False,
     ) -> None:
         """Initializes the optimizer.
 
@@ -47,13 +44,13 @@ class TrajectoryOptimizer:
             Lower bounds on the control input.
         u_max : np.ndarray | None, shape=(m,)
             Upper bounds on the control input.
+        safe_region_list : list[tuple[np.ndarray, np.ndarray]] | None, default=None
+            A list of polytopic safe regions parameterized by the tuple (Ai, bi).
+            For state x, the region is everywhere that Ai @ x + bi <= 0.
+        M : float, default=10000.0
+            Big M value for approximating indicator constraints.
         terminal_state_constraint : bool, default=False
             Whether to enforce a (point) terminal state constraint.
-
-        Unused
-        ------
-        trapezoidal : bool, default=False
-            Whether to use trapezoidal collocation.
         """
         assert isinstance(dyn, AffineDynamics)
         assert isinstance(N, int)
@@ -63,8 +60,8 @@ class TrajectoryOptimizer:
         assert isinstance(Qf, np.ndarray)
         assert isinstance(u_min, np.ndarray) or u_min is None
         assert isinstance(u_max, np.ndarray) or u_max is None
+        assert isinstance(M, float)
         assert isinstance(terminal_state_constraint, bool)
-        # assert isinstance(trapezoidal, bool)
 
         assert N > 1
         assert dt > 0.0
@@ -77,6 +74,7 @@ class TrajectoryOptimizer:
             assert len(u_max.shape) == 1
         if u_min is not None and u_max is not None:
             assert u_min.shape == u_max.shape
+        assert M > 0.0
 
         # setting variables
         self.dyn = dyn
@@ -84,8 +82,8 @@ class TrajectoryOptimizer:
         self.dt = dt
         self.u_min = u_min
         self.u_max = u_max
+        self.safe_region_list = safe_region_list
         self.terminal_state_constraint = terminal_state_constraint
-        # self.trapezoidal = trapezoidal
         self.n = dyn.n  # state dimension
         self.m = dyn.m  # control dimension
 
@@ -124,6 +122,22 @@ class TrajectoryOptimizer:
                 self.constraints += [
                     self.us[k, :] <= self.u_max
                 ]  # maximum input constraints
+
+        # checking whether safe regions are specified
+        if safe_region_list is not None:
+            self.region_constraints = []
+            self.zs = cp.Variable((N, len(safe_region_list)), boolean=True)
+            # self.region_constraints += [self.zs >= 0, self.zs <= 1]
+
+            # Ai has shape (n_planes, n), bi has shape (n_planes,)
+            for k in range(N):
+                for i, (Ai, bi) in enumerate(safe_region_list):
+                    # one indicator per time step
+                    self.region_constraints += [
+                        Ai @ self.xs[k, :] + bi <= M * (1 - self.zs[k, i])
+                    ]
+                self.region_constraints += [cp.sum(self.zs[k, :]) >= 1]  # >=1 region occupied
+            self.constraints += self.region_constraints
 
         # setting cost
         # for numerical overflow protection, divide (x, u) costs by (N, N - 1)
@@ -337,6 +351,11 @@ class TrajectoryOptimizer:
 if __name__ == "__main__":
     from core.systems import Quadrotor
     from core.systems import InvertedPendulum
+    from core.systems import NDIntegrator
+
+    # ########################## #
+    # EXAMPLE: SPATIAL QUADROTOR #
+    # ########################## #
 
     # # quadrotor
     # mass = 1.0  # mass
@@ -344,11 +363,11 @@ if __name__ == "__main__":
     # kf = 1.0  # thrust factor
     # km = 1.0  # drag factor
     # l = 0.1  # rotor arm length
-    # Jtp = None
+    # Jtp = 0.1
     # quad = Quadrotor(mass, I, kf, km, l, Jtp)
 
     # # traj opt
-    # N = 2
+    # N = 11
     # dt = 0.1
     # Q = np.eye(12)
     # R = 0.01 * np.eye(4)
@@ -358,115 +377,140 @@ if __name__ == "__main__":
     # traj_opt = TrajectoryOptimizer(quad, N, dt, Q, R, Qf, u_min, u_max)
 
     # # optimizing traj
-    # x0 = np.zeros(12)
+    # x0 = torch.zeros(12)
     # t = 0.0
     # xs_opt, us_opt = traj_opt.compute_trajectory(x0, t)
+    # breakpoint()
 
-    # inverted pend
-    mass = 1.0  # mass
-    l = 1.0  # length
-    pend = InvertedPendulum(mass, l)
+    # ########################## #
+    # EXAMPLE: INVERTED PENDULUM #
+    # ########################## #
 
-    # traj opt
-    N = 51
-    dt = 0.1
-    Q = np.diag([1e3, 1e2])
-    R = 1e-3 * np.eye(1)
-    Qf = np.diag([1e6, 1e5])
-    u_min = np.array([-2.0])
-    u_max = np.array([2.0])
-    tsc = False
-    traj_opt = TrajectoryOptimizer(
-        pend, N, dt, Q, R, Qf, u_min, u_max, terminal_state_constraint=tsc
-    )
+    # # inverted pend
+    # mass = 1.0  # mass
+    # l = 1.0  # length
+    # pend = InvertedPendulum(mass, l)
 
-    # optimizing traj
-    x0 = torch.tensor([-np.pi, 0.0], dtype=torch.float64, device=device)
-    if tsc:
-        xf_des = torch.zeros(2, dtype=torch.float64, device=device)
-    else:
-        xf_des = None
-    t = 0.0
-
-    xs_intermediate = []
-    counter = 0
-
-    import matplotlib.pyplot as plt
-    
-    def _traj_opt_wrapper(x, t, xt_prev, ut_prev):
-        global counter
-        xs_guess = xt_prev.squeeze(0) if xt_prev is not None else None
-        us_guess = ut_prev.squeeze(0) if ut_prev is not None else None
-
-        # [OPTION] desired state trajectory that is a linear interpolation to origin
-        # xs_des = torch.stack(
-        #     [
-        #         (max(5.0 - (t + _t), 0.0)) * x.squeeze(0)
-        #         for _t in np.linspace(0, dt * (N - 1), N)
-        #     ]
-        # )
-        xs_des = None
-        xs, us = traj_opt.compute_trajectory(
-            x.squeeze(0),
-            t,
-            xs_guess=xs_guess,
-            us_guess=us_guess,
-            xs_des=xs_des,
-            xf_des=xf_des,
-        )
-        xs_intermediate.append(x.squeeze(0).detach().numpy())
-
-        # intermediate plots
-        if counter % 10 == 0:
-            fig, ax = pend.plot_states(
-                np.linspace(0.0, dt * (len(xs_intermediate) - 1), len(xs_intermediate)),
-                np.stack(xs_intermediate, axis=0),
-                color="black",
-            )
-            pend.plot_states(
-                np.linspace(t, t + dt * (N - 1), N),
-                xs,
-                color="red",
-                fig=fig,
-                ax=ax,
-            )
-            plt.show()
-        counter += 1
-        print(counter)
-        return xs[None, ...], us[None, ...]
-
-    mpc_ctrl = MPCController(pend, _traj_opt_wrapper)
-
-    xs_sol, _ = pend.simulate(
-        x0[None, ...],
-        controller=mpc_ctrl,
-        ts=torch.linspace(0, 7, 71, dtype=torch.float64, device=device),
-    )
-
-    import matplotlib.pyplot as plt
-    plt.plot(xs_sol[0, :, 0].detach().numpy(), xs_sol[0, :, 1].detach().numpy())
-    plt.show()
-
-    breakpoint()
-
-    # # plotting
-    # ts = np.linspace(t, t + dt * (N - 1), N)
-    # # breakpoint()
-    # fig, ax = pend.plot_states(
-    #     ts,
-    #     np.stack(xs_opt, axis=0),
-    #     color="black",
+    # # traj opt
+    # N = 51
+    # dt = 0.1
+    # Q = np.diag([1e3, 1e2])
+    # R = 1e-3 * np.eye(1)
+    # Qf = np.diag([1e6, 1e5])
+    # u_min = np.array([-2.0])
+    # u_max = np.array([2.0])
+    # tsc = False
+    # traj_opt = TrajectoryOptimizer(
+    #     pend, N, dt, Q, R, Qf, u_min, u_max, terminal_state_constraint=tsc
     # )
-    # radius = 0.5
-    # # add_points(ax=ax, coordinates=xs_opt[0].detach().numpy(),
-    # #            radius=radius, color="blue")
-    # # add_points(ax=ax, coordinates=xs_opt[-1].detach().numpy(),
-    # #            radius=radius*.8, color="green")
-    # pend.plot_states(ts, xs_opt, color="red",
-    #                    fig=fig,
-    #                    ax=ax)
+
+    # # optimizing traj
+    # x0 = torch.tensor([-np.pi, 0.0], dtype=torch.float64, device=device)
+    # if tsc:
+    #     xf_des = torch.zeros(2, dtype=torch.float64, device=device)
+    # else:
+    #     xf_des = None
+    # t = 0.0
+
+    # xs_intermediate = []
+    # counter = 0
+
     # import matplotlib.pyplot as plt
+    
+    # def _traj_opt_wrapper(x, t, xt_prev, ut_prev):
+    #     global counter
+    #     xs_guess = xt_prev.squeeze(0) if xt_prev is not None else None
+    #     us_guess = ut_prev.squeeze(0) if ut_prev is not None else None
+
+    #     # [OPTION] desired state trajectory that is a linear interpolation to origin
+    #     # xs_des = torch.stack(
+    #     #     [
+    #     #         (max(5.0 - (t + _t), 0.0)) * x.squeeze(0)
+    #     #         for _t in np.linspace(0, dt * (N - 1), N)
+    #     #     ]
+    #     # )
+    #     xs_des = None
+    #     xs, us = traj_opt.compute_trajectory(
+    #         x.squeeze(0),
+    #         t,
+    #         xs_guess=xs_guess,
+    #         us_guess=us_guess,
+    #         xs_des=xs_des,
+    #         xf_des=xf_des,
+    #     )
+    #     xs_intermediate.append(x.squeeze(0).detach().numpy())
+
+    #     # intermediate plots
+    #     if counter % 10 == 0:
+    #         fig, ax = pend.plot_states(
+    #             np.linspace(0.0, dt * (len(xs_intermediate) - 1), len(xs_intermediate)),
+    #             np.stack(xs_intermediate, axis=0),
+    #             color="black",
+    #         )
+    #         pend.plot_states(
+    #             np.linspace(t, t + dt * (N - 1), N),
+    #             xs,
+    #             color="red",
+    #             fig=fig,
+    #             ax=ax,
+    #         )
+    #         plt.show()
+    #     counter += 1
+    #     print(counter)
+    #     return xs[None, ...], us[None, ...]
+
+    # mpc_ctrl = MPCController(pend, _traj_opt_wrapper)
+
+    # xs_sol, _ = pend.simulate(
+    #     x0[None, ...],
+    #     controller=mpc_ctrl,
+    #     ts=torch.linspace(0, 7, 71, dtype=torch.float64, device=device),
+    # )
+
+    # import matplotlib.pyplot as plt
+    # plt.plot(xs_sol[0, :, 0].detach().numpy(), xs_sol[0, :, 1].detach().numpy())
     # plt.show()
 
-    # import matplotlib.pyplot as plt
     # breakpoint()
+
+    # ############################################################## #
+    # EXAMPLE: PLANAR SINGLE INTEGRATOR WITH SAFE REGION CONSTRAINTS #
+    # ############################################################## #
+
+    # initializing the 1-2-integrator
+    integrator = NDIntegrator(1, 2)  # planar single integrator
+    N = 101
+    dt = 0.005
+    Q = np.diag([1e3, 1e3, 1e-3, 1e-3])
+    R = 1e-3 * np.eye(2)
+    Qf = np.diag([1e4, 1e4, 1e-3, 1e-3])
+    u_min = None
+    u_max = None
+    xs_des = torch.tensor(np.tile(np.array([5.0, -1.0, 0.0, 0.0]), (N, 1)))
+    M = 10000.0
+    safe_region_list = [
+        (np.array([[1.0, 0.0, 0.0, 0.0]]), np.array([0.0])),
+        (np.array([[0.0, 1.0, 0.0, 0.0]]), np.array([0.0])),
+    ]
+    traj_opt = TrajectoryOptimizer(
+        integrator,
+        N,
+        dt,
+        Q,
+        R,
+        Qf,
+        u_min,
+        u_max,
+        M=M,
+        safe_region_list=safe_region_list,
+    )
+    xs, us = traj_opt.compute_trajectory(
+        torch.tensor([-1.0, 5.0, 0.0, 0.0]),
+        torch.tensor(0.0),
+        xs_des=xs_des,
+    )
+
+    import matplotlib.pyplot as plt
+    plt.scatter(xs[:, 0].detach().numpy(), xs[:, 1].detach().numpy())
+    plt.show()
+    breakpoint()

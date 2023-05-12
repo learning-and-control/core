@@ -418,7 +418,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
             p = s[..., 9]
             q = s[..., 10]
 
-            wsq = self.invV @ u
+            wsq = (self.invV @ u.unsqueeze(-1)).squeeze(-1)
             assert torch.all(wsq >= 0.0)
             w = torch.sqrt(wsq)
             w[..., 0] *= -1

@@ -62,6 +62,28 @@ class NIntegrator(LinearSystemDynamics):
         B[-1, 0] = 1.
         LinearSystemDynamics.__init__(self, A, B)
 
+class NDIntegrator(LinearSystemDynamics):
+    """An n-integrator in d dimensions.
+
+    x^(n) = u, where u is in R^d.
+    """
+
+    def __init__(self, n: int, d: int) -> None:
+        """Initialize the integrator.
+
+        Parameters
+        ----------
+        n : int
+            The number of integrations in the system dynamics.
+        d : int
+            The dimensionality.
+        """
+        A = np.zeros(((n + 1) * d, (n + 1) * d))
+        A[:-d, d:] = np.eye(n * d)
+        B = np.zeros(((n + 1) * d, d))
+        B[-d:, :] = np.eye(d)
+        LinearSystemDynamics.__init__(self, A, B)
+
 class RandomLinearSystem(LinearSystemDynamics):
 
     def __init__(self, n, m):

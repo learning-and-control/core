@@ -6,7 +6,7 @@ from .planar_quadrotor import PlanarQuadrotor
 from .polynomial_system import PolynomialSystem
 from .spatial_quadrotor import Quadrotor
 
-from .linear_system import LinearSystemDynamics, NIntegrator, RandomLinearSystem
+from .linear_system import LinearSystemDynamics, NDIntegrator, NIntegrator, RandomLinearSystem
 from .segway_system import Segway
 from .segway_3d_system import Segway3D
 from .car_system import Car
