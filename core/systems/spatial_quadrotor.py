@@ -60,6 +60,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         km: float,
         l: float,
         Jtp: float | None = None,
+        wsq_input: bool = True,
     ) -> None:
         """Initialize a quadrotor.
 
@@ -80,6 +81,8 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         Jtp : Optional[float]
             Total rotational moment of inertia about the propellor axes. Used
             for computing the gyroscopic effect.
+        wsq_input : bool, default=True
+            Whether to use squared rotor speeds or z-thrust and moments for the inputs.
         """
         assert mass > 0.0
         assert I.shape == (3,)
@@ -93,6 +96,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         # full-state observation, but the angles are observed as sin/cos pairs: 15-dim
         FullyActuatedRoboticDynamics.__init__(self, 6, 4)
         ObservableDynamics.__init__(self, 15)
+        self.wsq_input = wsq_input
         _Jtp = Parameter(tensor(Jtp, dtype=float64, device=device)) if Jtp is not None else None
         self.params = (
             Parameter(tensor(mass, dtype=float64, device=device)),
@@ -390,7 +394,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         s : torch.Tensor, shape=(..., 12)
             State of the quadrotor.
         u : torch.Tensor, shape=(..., 4)
-            Virtual input of the quadrotor.
+            Input of the quadrotor.
         t : float
             Time. Unused, included for API compliance.
 
@@ -418,7 +422,10 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
             p = s[..., 9]
             q = s[..., 10]
 
-            wsq = (self.invV @ u.unsqueeze(-1)).squeeze(-1)
+            if self.wsq_input:
+                wsq = u
+            else:
+                wsq = (self.invV @ u.unsqueeze(-1)).squeeze(-1)
             assert torch.all(wsq >= 0.0)
             w = torch.sqrt(wsq)
             w[..., 0] *= -1
@@ -428,7 +435,11 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
             ds_gyro[..., 9] = -Jtp * q * Omega / Ix
             ds_gyro[..., 10] = Jtp * p * Omega / Iy
 
-        ds = fdyn + (gdyn @ u.unsqueeze(-1)).squeeze(-1) + ds_gyro
+        if self.wsq_input:
+            ctrl_input = (self.V @ u.unsqueeze(-1)).squeeze(-1)
+        else:
+            ctrl_input = u
+        ds = fdyn + (gdyn @ ctrl_input.unsqueeze(-1)).squeeze(-1) + ds_gyro
         return ds
 
     def A(self, s: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
