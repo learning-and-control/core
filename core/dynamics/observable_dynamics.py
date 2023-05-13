@@ -13,6 +13,10 @@ class ObservableDynamics(ABC):
     def to_principal_coordinates(self, state):
         pass
 
+    @property
+    def p(self):
+        return self.obs_dim
+
     def obervable_dynamics(self, observations, actions, t):
         """ Returns the dynamics in the observable coordinates.
 
