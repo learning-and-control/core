@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from torch.autograd.functional import jacobian
-from system_dynamics import SystemDynamics
+from .system_dynamics import SystemDynamics
 class ObservableDynamics(ABC):
     def __init__(self, obs_dim):
         self.obs_dim = obs_dim
