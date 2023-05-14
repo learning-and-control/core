@@ -26,5 +26,6 @@ class PiecewiseConstantController(Controller):
         else:
             t_idx = torch.argmin(abs(self.h - t))
         if t_idx >= self.ut.shape[1]:
-            raise OverflowError('[ERROR] Controller called outside horizon.')
+            # raise OverflowError('[ERROR] Controller called outside horizon.')
+            t_idx = self.ut.shape[1] - 1  # [DEBUG]
         return self.ut[:, t_idx]

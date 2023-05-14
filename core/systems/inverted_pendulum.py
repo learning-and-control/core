@@ -28,6 +28,13 @@ class InvertedPendulum(FullyActuatedRoboticDynamics, ObservableDynamics):
             theta_dot
         ], dim=-1)
 
+    def invert_observation(self, obs):
+        x = obs[..., 0]
+        y = obs[..., 1]
+        dtheta = obs[..., 2]
+        theta = atan2(y, x)
+        return stack([theta, dtheta], dim=-1)
+
     def to_principal_coordinates(self, state):
         theta = state[..., 0]
         theta_dot = state[..., 1]

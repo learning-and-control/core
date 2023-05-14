@@ -2,7 +2,7 @@ import cvxpy as cp
 import numpy as np
 import torch
 from core.controllers import PiecewiseConstantController, MPCController
-from core.dynamics.affine_dynamics import AffineDynamics
+from core.dynamics.system_dynamics import SystemDynamics
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -12,7 +12,7 @@ class TrajectoryOptimizer:
 
     def __init__(
         self,
-        dyn: AffineDynamics,
+        dyn: SystemDynamics,
         N: int,
         dt: float,
         Q: np.ndarray,
@@ -23,12 +23,13 @@ class TrajectoryOptimizer:
         safe_region_list: list[tuple[np.ndarray, np.ndarray]] | None = None,
         M: float = 10000.0,
         terminal_state_constraint: bool = False,
+        cpu: bool = False,
     ) -> None:
         """Initializes the optimizer.
 
         Parameters
         ----------
-        dyn : AffineDynamics
+        dyn : SystemDynamics
             A control affine dynamical system.
         N : int
             The number of time steps including the initial state.
@@ -51,8 +52,10 @@ class TrajectoryOptimizer:
             Big M value for approximating indicator constraints.
         terminal_state_constraint : bool, default=False
             Whether to enforce a (point) terminal state constraint.
+        cpu : bool, default=False
+            Whether to use CPU for device.
         """
-        assert isinstance(dyn, AffineDynamics)
+        assert isinstance(dyn, SystemDynamics)
         assert isinstance(N, int)
         assert isinstance(dt, float)
         assert isinstance(Q, np.ndarray)
@@ -62,6 +65,7 @@ class TrajectoryOptimizer:
         assert isinstance(u_max, np.ndarray) or u_max is None
         assert isinstance(M, float)
         assert isinstance(terminal_state_constraint, bool)
+        assert isinstance(cpu, bool)
 
         assert N > 1
         assert dt > 0.0
@@ -75,6 +79,11 @@ class TrajectoryOptimizer:
         if u_min is not None and u_max is not None:
             assert u_min.shape == u_max.shape
         assert M > 0.0
+
+        if cpu:
+            self.device = torch.device("cpu")
+        else:
+            self.device = device
 
         # setting variables
         self.dyn = dyn
@@ -91,6 +100,8 @@ class TrajectoryOptimizer:
         self.Q = Q
         self.R = R
         self.Qf = Qf
+        self.Qs = [cp.Parameter((self.n, self.n), PSD=True) for _ in range(N)]
+        self.Rs = [cp.Parameter((self.m, self.m), PSD=True) for _ in range(N - 1)]
 
         self.x0 = cp.Parameter(self.n)  # initial state
         self.xs_des = cp.Parameter((self.N, self.n))  # desired trajectory for tracking
@@ -141,15 +152,19 @@ class TrajectoryOptimizer:
 
         # setting cost
         # for numerical overflow protection, divide (x, u) costs by (N, N - 1)
+        # initialize the Qk and Rk parameters to be Q and R for each time step
+        self.Qs[-1].value = Qf
         self.cost = cp.quad_form(
-            self.xs[-1, :] - self.xs_des[-1, :], Qf
+            self.xs[-1, :] - self.xs_des[-1, :], self.Qs[-1]
         ) / N  # terminal cost
         for k in range(N - 1):
+            self.Qs[k].value = Q
+            self.Rs[k].value = R
             self.cost += cp.quad_form(
-                self.xs[k, :] - self.xs_des[k, :], Q
+                self.xs[k, :] - self.xs_des[k, :], self.Qs[k]
             ) / N # stage state cost
             self.cost += cp.quad_form(
-                self.us[k, :] - self.us_des[k, :], R
+                self.us[k, :] - self.us_des[k, :], self.Rs[k]
             ) / (N - 1) # stage input cost
 
         # initializing problem
@@ -203,7 +218,7 @@ class TrajectoryOptimizer:
         block = torch.zeros(
             (self.N - 1, self.n + self.m + 1, self.n + self.m + 1),
             dtype=torch.float64,
-            device=device,
+            device=self.device,
         )
         block[:, :self.n, :self.n] = As
         block[:, :self.n, self.n:(self.n + self.m)] = Bs
@@ -225,6 +240,7 @@ class TrajectoryOptimizer:
         xs_des: torch.Tensor | None = None,
         us_des: torch.Tensor | None = None,
         xf_des: torch.Tensor | None = None,
+        short_N: int | None = None,
         max_outer_iters: int = 100,
         sqp_tol: float = 1e-5,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -246,6 +262,9 @@ class TrajectoryOptimizer:
             A desired trajectory for the inputs.
         xf_des: torch.Tensor | None, default=None
             A desired final state constraint.
+        short_N : int | None, default=None
+            A new horizon shorter than N. If not None, the later entries of xs_opt and
+            us_opt will be padded with the optimal solutions computed at step short_N.
         max_outer_iters : int, default=100
             Maximum number of outer iterations of SQP.
         sqp_tol : float, default=1e-5
@@ -266,18 +285,31 @@ class TrajectoryOptimizer:
         if xs_des is not None:
             assert xs_des.shape == (self.N, self.n)
         else:
-            xs_des = torch.zeros((self.N, self.n), dtype=torch.float64, device=device)
+            xs_des = torch.zeros(
+                (self.N, self.n),
+                dtype=torch.float64,
+                device=self.device,
+            )
         if us_des is not None:
             assert us_des.shape == (self.N - 1, self.m)
         else:
             us_des = torch.zeros(
-                (self.N - 1, self.m), dtype=torch.float64, device=device
+                (self.N - 1, self.m), dtype=torch.float64, device=self.device
             )
+        if short_N is not None:
+            # if a short_N is specified, truncate the MPC trajectory by setting all
+            # the later cost matrices to 0
+            assert short_N <= self.N and short_N >= 2
+            for k in range(short_N, self.N):
+                self.Qs[k].value = np.zeros((self.n, self.n))
+            for k in range(short_N - 1, self.N - 1):
+                self.Rs[k].value = np.zeros((self.m, self.m))
+            self.Qs[short_N - 1].value = self.Qf
         assert self.terminal_state_constraint == (xf_des is not None)
         if xf_des is not None:
-            self.xf_des.value = xf_des.detach().numpy()  # terminal state constraint
-        self.xs_des.value = xs_des.detach().numpy()  # desired trajectory to track
-        self.us_des.value = us_des.detach().numpy()
+            self.xf_des.value = xf_des.detach().cpu().numpy()  # terminal state
+        self.xs_des.value = xs_des.detach().cpu().numpy()  # desired trajectory
+        self.us_des.value = us_des.detach().cpu().numpy()
 
         assert isinstance(max_outer_iters, int)
         assert isinstance(sqp_tol, float)
@@ -285,14 +317,17 @@ class TrajectoryOptimizer:
         assert sqp_tol > 0.0
 
         # warm starting SQP
-        # [TODO] warm start xs by running the dynamics forward with 0 input
         _ts = torch.linspace(
-            t, t + self.dt * (self.N - 1), self.N, dtype=torch.float64, device=device
+            t,
+            t + self.dt * (self.N - 1),
+            self.N,
+            dtype=torch.float64,
+            device=self.device,
         )  # (N,)
         ts = _ts[:-1]  # (N - 1,)
         if us_guess is None:
             us_prev = torch.zeros(
-                (self.N - 1, self.m), dtype=torch.float64, device=device,
+                (self.N - 1, self.m), dtype=torch.float64, device=self.device,
             )  # (N - 1, m)
         else:
             us_prev = us_guess
@@ -307,19 +342,19 @@ class TrajectoryOptimizer:
             xs_prev = _xs_prev.squeeze(0)  # (N, n)
         else:
             xs_prev = xs_guess
-        self.xs.value = xs_prev.detach().numpy()
-        self.us.value = us_prev.detach().numpy()
+        self.xs.value = xs_prev.detach().cpu().numpy()
+        self.us.value = us_prev.detach().cpu().numpy()
 
         # SQP iterations
         for i in range(max_outer_iters):
             # linearizing dynamics about previous solution trajectory
             _Fs, _Gs, _Hs = self._compute_FGHs(xs_prev, us_prev, ts)
-            Fs = _Fs.detach().numpy()
-            Gs = _Gs.detach().numpy()
-            Hs = _Hs.detach().numpy()
+            Fs = _Fs.detach().cpu().numpy()
+            Gs = _Gs.detach().cpu().numpy()
+            Hs = _Hs.detach().cpu().numpy()
 
             # setting optimization parameters
-            self.x0.value = xs_prev[0, :].detach().numpy()
+            self.x0.value = xs_prev[0, :].detach().cpu().numpy()
             for k in range(self.N - 1):
                 self.Fs[k].value = Fs[k, ...]
                 self.Gs[k].value = Gs[k, ...]
@@ -334,8 +369,12 @@ class TrajectoryOptimizer:
             )
             if self.xs.value is None:
                 raise RuntimeException("MPC problem is infeasible!")
-            xs_opt = torch.tensor(self.xs.value, dtype=torch.float64, device=device)
-            us_opt = torch.tensor(self.us.value, dtype=torch.float64, device=device)
+            xs_opt = torch.tensor(
+                self.xs.value, dtype=torch.float64, device=self.device
+            )
+            us_opt = torch.tensor(
+                self.us.value, dtype=torch.float64, device=self.device
+            )
 
             # checking convergence
             cond1 = torch.all(torch.linalg.norm(xs_opt - xs_prev, axis=-1) <= sqp_tol)
@@ -346,6 +385,16 @@ class TrajectoryOptimizer:
             xs_prev = xs_opt
             us_prev = us_opt
 
+        # reverting the value of the MPC cost parameters
+        if short_N is not None:
+            for k in range(self.N - 1):
+                self.Qs[k].value = self.Q
+                self.Rs[k].value = self.R
+            self.Qs[-1].value = self.Qf
+
+            if short_N < self.N:
+                xs_opt[short_N:, :] = xs_opt[short_N - 1, :]
+                us_opt[(short_N - 1):, :] = us_opt[short_N - 2, :]
         return xs_opt, us_opt
 
 if __name__ == "__main__":
@@ -386,92 +435,96 @@ if __name__ == "__main__":
     # EXAMPLE: INVERTED PENDULUM #
     # ########################## #
 
-    # # inverted pend
-    # mass = 1.0  # mass
-    # l = 1.0  # length
-    # pend = InvertedPendulum(mass, l)
+    # inverted pend
+    mass = 1.0  # mass
+    l = 1.0  # length
+    pend = InvertedPendulum(mass, l)
 
-    # # traj opt
-    # N = 51
-    # dt = 0.1
-    # Q = np.diag([1e3, 1e2])
-    # R = 1e-3 * np.eye(1)
-    # Qf = np.diag([1e6, 1e5])
-    # u_min = np.array([-2.0])
-    # u_max = np.array([2.0])
-    # tsc = False
-    # traj_opt = TrajectoryOptimizer(
-    #     pend, N, dt, Q, R, Qf, u_min, u_max, terminal_state_constraint=tsc
-    # )
+    # traj opt
+    N = 51
+    dt = 0.1
+    Q = np.diag([1e3, 1e2])
+    R = 1e-3 * np.eye(1)
+    Qf = np.diag([1e6, 1e5])
+    u_min = np.array([-2.0])
+    u_max = np.array([2.0])
+    tsc = False
+    traj_opt = TrajectoryOptimizer(
+        pend, N, dt, Q, R, Qf, u_min, u_max, terminal_state_constraint=tsc
+    )
 
-    # # optimizing traj
-    # x0 = torch.tensor([-np.pi, 0.0], dtype=torch.float64, device=device)
-    # if tsc:
-    #     xf_des = torch.zeros(2, dtype=torch.float64, device=device)
-    # else:
-    #     xf_des = None
-    # t = 0.0
+    # optimizing traj
+    x0 = torch.tensor([-np.pi, 0.0], dtype=torch.float64, device=device)
+    if tsc:
+        xf_des = torch.zeros(2, dtype=torch.float64, device=device)
+    else:
+        xf_des = None
+    t = 0.0
 
-    # xs_intermediate = []
-    # counter = 0
+    xs_intermediate = []
+    counter = 0
 
-    # import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt
     
-    # def _traj_opt_wrapper(x, t, xt_prev, ut_prev):
-    #     global counter
-    #     xs_guess = xt_prev.squeeze(0) if xt_prev is not None else None
-    #     us_guess = ut_prev.squeeze(0) if ut_prev is not None else None
+    def _traj_opt_wrapper(x, t, xt_prev, ut_prev):
+        global counter
+        xs_guess = xt_prev.squeeze(0) if xt_prev is not None else None
+        us_guess = ut_prev.squeeze(0) if ut_prev is not None else None
 
-    #     # [OPTION] desired state trajectory that is a linear interpolation to origin
-    #     # xs_des = torch.stack(
-    #     #     [
-    #     #         (max(5.0 - (t + _t), 0.0)) * x.squeeze(0)
-    #     #         for _t in np.linspace(0, dt * (N - 1), N)
-    #     #     ]
-    #     # )
-    #     xs_des = None
-    #     xs, us = traj_opt.compute_trajectory(
-    #         x.squeeze(0),
-    #         t,
-    #         xs_guess=xs_guess,
-    #         us_guess=us_guess,
-    #         xs_des=xs_des,
-    #         xf_des=xf_des,
-    #     )
-    #     xs_intermediate.append(x.squeeze(0).detach().numpy())
+        # [OPTION] desired state trajectory that is a linear interpolation to origin
+        # xs_des = torch.stack(
+        #     [
+        #         (max(5.0 - (t + _t), 0.0)) * x.squeeze(0)
+        #         for _t in np.linspace(0, dt * (N - 1), N)
+        #     ]
+        # )
+        xs_des = None
+        xs, us = traj_opt.compute_trajectory(
+            x.squeeze(0),
+            t,
+            xs_guess=xs_guess,
+            us_guess=us_guess,
+            xs_des=xs_des,
+            xf_des=xf_des,
+        )
+        xs_intermediate.append(x.squeeze(0).detach().cpu().numpy())
 
-    #     # intermediate plots
-    #     if counter % 10 == 0:
-    #         fig, ax = pend.plot_states(
-    #             np.linspace(0.0, dt * (len(xs_intermediate) - 1), len(xs_intermediate)),
-    #             np.stack(xs_intermediate, axis=0),
-    #             color="black",
-    #         )
-    #         pend.plot_states(
-    #             np.linspace(t, t + dt * (N - 1), N),
-    #             xs,
-    #             color="red",
-    #             fig=fig,
-    #             ax=ax,
-    #         )
-    #         plt.show()
-    #     counter += 1
-    #     print(counter)
-    #     return xs[None, ...], us[None, ...]
+        # intermediate plots
+        if counter % 10 == 0:
+            fig, ax = pend.plot_states(
+                np.linspace(
+                    0.0, dt * (len(xs_intermediate) - 1), len(xs_intermediate)
+                ),
+                np.stack(xs_intermediate, axis=0),
+                color="black",
+            )
+            pend.plot_states(
+                np.linspace(t, t + dt * (N - 1), N),
+                xs,
+                color="red",
+                fig=fig,
+                ax=ax,
+            )
+            plt.show()
+        counter += 1
+        print(counter)
+        return xs[None, ...], us[None, ...]
 
-    # mpc_ctrl = MPCController(pend, _traj_opt_wrapper)
+    mpc_ctrl = MPCController(pend, _traj_opt_wrapper)
 
-    # xs_sol, _ = pend.simulate(
-    #     x0[None, ...],
-    #     controller=mpc_ctrl,
-    #     ts=torch.linspace(0, 7, 71, dtype=torch.float64, device=device),
-    # )
+    xs_sol, _ = pend.simulate(
+        x0[None, ...],
+        controller=mpc_ctrl,
+        ts=torch.linspace(0, 7, 71, dtype=torch.float64, device=device),
+    )
 
-    # import matplotlib.pyplot as plt
-    # plt.plot(xs_sol[0, :, 0].detach().numpy(), xs_sol[0, :, 1].detach().numpy())
-    # plt.show()
+    import matplotlib.pyplot as plt
+    plt.plot(
+        xs_sol[0, :, 0].detach().cpu().numpy(), xs_sol[0, :, 1].detach().cpu().numpy()
+    )
+    plt.show()
 
-    # breakpoint()
+    breakpoint()
 
     # ############################################################## #
     # EXAMPLE: PLANAR SINGLE INTEGRATOR WITH SAFE REGION CONSTRAINTS #
@@ -511,6 +564,6 @@ if __name__ == "__main__":
     )
 
     import matplotlib.pyplot as plt
-    plt.scatter(xs[:, 0].detach().numpy(), xs[:, 1].detach().numpy())
+    plt.scatter(xs[:, 0].detach().cpu().numpy(), xs[:, 1].detach().cpu().numpy())
     plt.show()
     breakpoint()
