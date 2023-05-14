@@ -61,6 +61,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         l: float,
         Jtp: float | None = None,
         wsq_input: bool = True,
+        cpu: bool = False,
     ) -> None:
         """Initialize a quadrotor.
 
@@ -83,6 +84,8 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
             for computing the gyroscopic effect.
         wsq_input : bool, default=True
             Whether to use squared rotor speeds or z-thrust and moments for the inputs.
+        cpu : bool, default=False
+            Whether to use CPU for device.
         """
         assert mass > 0.0
         assert I.shape == (3,)
@@ -92,18 +95,25 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         if Jtp is not None:
             assert Jtp > 0.0
 
+        if cpu:
+            self.device = torch.device("cpu")
+        else:
+            self.device = device
+
         # 12 states, 4 inputs, is a spatially 3D system
         # full-state observation, but the angles are observed as sin/cos pairs: 15-dim
         FullyActuatedRoboticDynamics.__init__(self, 6, 4)
         ObservableDynamics.__init__(self, 15)
         self.wsq_input = wsq_input
-        _Jtp = Parameter(tensor(Jtp, dtype=float64, device=device)) if Jtp is not None else None
+        _Jtp = Parameter(
+            tensor(Jtp, dtype=float64, device=self.device)
+        ) if Jtp is not None else None
         self.params = (
-            Parameter(tensor(mass, dtype=float64, device=device)),
-            Parameter(tensor(I, dtype=float64, device=device)),
-            Parameter(tensor(kf, dtype=float64, device=device)),
-            Parameter(tensor(km, dtype=float64, device=device)),
-            Parameter(tensor(l, dtype=float64, device=device)),
+            Parameter(tensor(mass, dtype=float64, device=self.device)),
+            Parameter(tensor(I, dtype=float64, device=self.device)),
+            Parameter(tensor(kf, dtype=float64, device=self.device)),
+            Parameter(tensor(km, dtype=float64, device=self.device)),
+            Parameter(tensor(l, dtype=float64, device=self.device)),
             _Jtp,
         )
 
@@ -172,7 +182,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
                 [-km, km, -km, km],
             ],
             dtype=float64,
-            device=device,
+            device=self.device,
         )
 
         return _V
@@ -194,7 +204,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
                     [1.0 / kf, 2.0 / (kf * l), 0.0, 1.0 / km],
                 ],
                 dtype=float64,
-                device=device,
+                device=self.device,
             )
             / 4.0
         )
@@ -271,9 +281,30 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         sphi = sin(phi)
         tth = tan(theta)
 
-        row1 = torch.stack((ones_like(cth), sphi * tth, cphi * tth), dim=-1)
-        row2 = torch.stack((zeros_like(cth), cphi, -sphi), dim=-1)
-        row3 = torch.stack((zeros_like(cth), sphi / cth, cphi / cth), dim=-1)
+        row1 = torch.stack(
+            (
+                ones_like(cth, dtype=float64, device=self.device),
+                sphi * tth,
+                cphi * tth,
+            ),
+            dim=-1,
+        )
+        row2 = torch.stack(
+            (
+                zeros_like(cth, dtype=float64, device=self.device),
+                cphi,
+                -sphi,
+            ),
+            dim=-1,
+        )
+        row3 = torch.stack(
+            (
+                zeros_like(cth, dtype=float64, device=self.device),
+                sphi / cth,
+                cphi / cth,
+            ),
+            dim=-1,
+        )
         T = torch.stack((row1, row2, row3), dim=-2)
 
         return T
@@ -479,7 +510,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         spsi = sin(psi)
         tth = tan(theta)
 
-        _A = zeros(s.shape[:-1] + (12, 12))
+        _A = zeros(s.shape[:-1] + (12, 12), dtype=float64, device=self.device)
 
         _A[..., 0, 3:9] = torch.stack(
             [
@@ -513,7 +544,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
             [
                 v * cphi * cth - w * cth * sphi,
                 -u * cth - w * cphi * sth - v * sphi * sth,
-                zeros(s.shape[:-1], dtype=float64, device=device),
+                zeros(s.shape[:-1], dtype=float64, device=self.device),
                 -sth,
                 cth * sphi,
                 cphi * cth,
@@ -528,7 +559,7 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
             dim=-1
         )
         _A[..., 3, 9:12] = torch.stack(
-            [ones(s.shape[:-1]), sphi * tth, cphi * tth],
+            [ones(s.shape[:-1], dtype=float64, device=self.device), sphi * tth, cphi * tth],
             dim=-1,
         )
         _A[..., 4, 3] = -r * cphi - q * sphi
@@ -546,19 +577,19 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         )
         _A[..., 6, 4] = g * cth
         _A[..., 6, 7:12] = torch.stack(
-            [r, -q, zeros(s.shape[:-1]), -w, v],
+            [r, -q, zeros(s.shape[:-1], dtype=float64, device=self.device), -w, v],
             dim=-1
         )
         _A[..., 7, 3:12] = torch.stack(
             [
                 -g * cphi * cth,
                 g * sphi * sth,
-                zeros(s.shape[:-1]),
+                zeros(s.shape[:-1], dtype=float64, device=self.device),
                 -r,
-                zeros(s.shape[:-1]),
+                zeros(s.shape[:-1], dtype=float64, device=self.device),
                 p,
                 w,
-                zeros(s.shape[:-1]),
+                zeros(s.shape[:-1], dtype=float64, device=self.device),
                 -u,
             ],
             dim=-1,
@@ -567,13 +598,13 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
             [
                 g * cth * sphi,
                 g * cphi * sth,
-                zeros(s.shape[:-1]),
+                zeros(s.shape[:-1], dtype=float64, device=self.device),
                 q,
                 -p,
-                zeros(s.shape[:-1]),
+                zeros(s.shape[:-1], dtype=float64, device=self.device),
                 -v,
                 u,
-                zeros(s.shape[:-1]),
+                zeros(s.shape[:-1], dtype=float64, device=self.device),
             ],
             dim=-1,
         )
@@ -582,14 +613,17 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
             dim=-1
         )
         _A[..., 10, 9:12] = torch.stack(
-            [-(r * (Ix - Iz)) / Iy, zeros(s.shape[:-1]), -(p * (Ix - Iz)) / Iy],
+            [
+                -(r * (Ix - Iz)) / Iy,
+                zeros(s.shape[:-1], dtype=float64, device=self.device),
+                -(p * (Ix - Iz)) / Iy,
+            ],
             dim=-1,
         )
         _A[..., 11, 9:11] = torch.stack(
             [(q * (Ix - Iy)) / Iz, (p * (Ix - Iy)) / Iz],
             dim=-1,
         )
-
         return _A
 
     def B(self, s: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
@@ -609,12 +643,15 @@ class Quadrotor(FullyActuatedRoboticDynamics, Module, ObservableDynamics):
         """
         m = self.params[0]
         Ix, Iy, Iz = self.params[1]
-        _B = zeros(s.shape[:-1] + (12, 4), dtype=float64, device=device)
+        _B = zeros(s.shape[:-1] + (12, 4), dtype=float64, device=self.device)
 
         _B[..., 8, 0] = 1.0 / m
         _B[..., 9, 1] = 1.0 / Ix
         _B[..., 10, 2] = 1.0 / Iy
         _B[..., 11, 3] = 1.0 / Iz
+
+        if self.wsq_input:
+            _B = _B @ self.V
 
         return _B
 

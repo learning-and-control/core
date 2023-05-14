@@ -1,6 +1,6 @@
+import torch
+
 from .controller import Controller
-from numpy import rint, argmin
-from math import floor
 
 
 class PiecewiseConstantController(Controller):
@@ -17,14 +17,14 @@ class PiecewiseConstantController(Controller):
 
         if type(self.h) is float:
             if self.round_mode_on:
-                t_idx = int(rint(t / self.h))
+                t_idx = int(torch.round(t / self.h))
             else:
-                t_idx = floor(t / self.h)
+                t_idx = torch.floor(t / self.h)
                 if t_idx == self.ut.shape[1]:
                     #off by one can happen because of floating point errors
                     t_idx -= 1
         else:
-            t_idx = argmin(abs(self.h - t))
+            t_idx = torch.argmin(abs(self.h - t))
         if t_idx >= self.ut.shape[1]:
             raise OverflowError('[ERROR] Controller called outside horizon.')
         return self.ut[:, t_idx]
